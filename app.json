@@ -1,8 +1,9 @@
 {
   "expo": {
-    "name": "licite-mais",
+    "name": "Licite Mais",
     "slug": "licite-mais",
     "version": "1.0.0",
+    "scheme": "licitemais",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
@@ -20,6 +21,11 @@
     },
     "web": {
       "favicon": "./assets/favicon.png"
-    }
+    },
+    "plugins": [
+      "expo-router",
+      "expo-secure-store",
+      "expo-web-browser"
+    ]
   }
 }
