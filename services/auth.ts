@@ -1,36 +1,67 @@
-import type { AuthChangeEvent, Session } from "@supabase/supabase-js";
+import type {
+  AuthChangeEvent,
+  AuthError,
+  Session,
+  Subscription,
+} from "@supabase/supabase-js";
 import { supabase } from "./supabase";
 
-const AUTH_ERROR_MESSAGES: Record<string, string> = {
-  "Invalid login credentials": "E-mail ou senha incorretos.",
-  "Email not confirmed":
-    "E-mail ainda não confirmado. Verifique sua caixa de entrada.",
-  "User already registered": "Este e-mail já está cadastrado.",
-  "Password should be at least 6 characters":
-    "A senha deve ter pelo menos 6 caracteres.",
-  "Unable to validate email address: invalid format": "E-mail inválido.",
-  "Email rate limit exceeded":
-    "Muitas tentativas. Aguarde alguns minutos e tente novamente.",
-  "For security purposes, you can only request this once every 60 seconds":
-    "Por segurança, aguarde 60 segundos antes de tentar novamente.",
-  "New password should be different from the old password":
-    "A nova senha deve ser diferente da anterior.",
-  "User not found": "Usuário não encontrado.",
-  "Signup is disabled": "Cadastro de novos usuários está desativado.",
-};
+/**
+ * Traduz erros de autenticação do Supabase para mensagens amigáveis em PT-BR.
+ * Tenta primeiro pelo `code` (estável) e cai para a mensagem em inglês.
+ */
+export function translateAuthError(error: AuthError | Error | null): string {
+  if (!error) return "";
 
-export function translateAuthError(message: string): string {
-  if (AUTH_ERROR_MESSAGES[message]) return AUTH_ERROR_MESSAGES[message];
+  const code = "code" in error ? error.code : undefined;
+  const message = error.message ?? "";
 
-  const partial = Object.entries(AUTH_ERROR_MESSAGES).find(([key]) =>
-    message.toLowerCase().includes(key.toLowerCase()),
-  );
-  if (partial) return partial[1];
+  // Mapeamento por código (preferencial — não muda entre versões/idiomas).
+  const byCode: Record<string, string> = {
+    invalid_credentials: "E-mail ou senha incorretos.",
+    email_not_confirmed:
+      "Confirme seu e-mail antes de entrar. Verifique sua caixa de entrada.",
+    user_already_exists: "Este e-mail já está cadastrado.",
+    email_exists: "Este e-mail já está cadastrado.",
+    weak_password: "A senha é muito fraca. Use pelo menos 6 caracteres.",
+    over_email_send_rate_limit:
+      "Muitas tentativas. Aguarde alguns minutos e tente novamente.",
+    over_request_rate_limit:
+      "Muitas tentativas. Aguarde alguns minutos e tente novamente.",
+    validation_failed: "Dados inválidos. Verifique os campos e tente novamente.",
+    signup_disabled: "Os cadastros estão desabilitados no momento.",
+    email_address_invalid: "E-mail inválido.",
+    same_password: "A nova senha deve ser diferente da anterior.",
+    session_not_found: "Sua sessão expirou. Entre novamente.",
+    user_not_found: "Usuário não encontrado.",
+  };
 
-  if (/network|fetch/i.test(message)) {
-    return "Falha de conexão. Verifique sua internet e tente novamente.";
-  }
+  if (code && byCode[code]) return byCode[code];
 
+  // Fallback por trecho da mensagem em inglês.
+  const m = message.toLowerCase();
+  if (m.includes("invalid login credentials"))
+    return "E-mail ou senha incorretos.";
+  if (m.includes("email not confirmed"))
+    return "Confirme seu e-mail antes de entrar. Verifique sua caixa de entrada.";
+  if (m.includes("already registered") || m.includes("already been registered"))
+    return "Este e-mail já está cadastrado.";
+  if (m.includes("password should be at least"))
+    return "A senha deve ter pelo menos 6 caracteres.";
+  if (m.includes("unable to validate email") || m.includes("invalid format"))
+    return "E-mail inválido.";
+  if (m.includes("for security purposes") || m.includes("rate limit"))
+    return "Muitas tentativas. Aguarde alguns minutos e tente novamente.";
+  if (m.includes("signups not allowed"))
+    return "Os cadastros estão desabilitados no momento.";
+  if (
+    m.includes("network") ||
+    m.includes("failed to fetch") ||
+    m.includes("fetch failed")
+  )
+    return "Não foi possível conectar. Verifique sua conexão com a internet.";
+
+  // Último recurso: mensagem genérica (evita expor texto técnico em inglês).
   return "Algo deu errado. Tente novamente em instantes.";
 }
 
@@ -39,10 +70,12 @@ export async function signUp(name: string, email: string, password: string) {
     email,
     password,
     options: {
+      // Grava o nome no metadata do usuário. Com "Confirm email" habilitado
+      // (padrão), o Supabase já dispara o e-mail de verificação neste passo.
       data: { name },
     },
   });
-  if (error) throw new Error(translateAuthError(error.message));
+  if (error) throw new Error(translateAuthError(error));
   return data;
 }
 
@@ -51,29 +84,30 @@ export async function signIn(email: string, password: string) {
     email,
     password,
   });
-  if (error) throw new Error(translateAuthError(error.message));
+  if (error) throw new Error(translateAuthError(error));
   return data;
 }
 
 export async function signOut() {
   const { error } = await supabase.auth.signOut();
-  if (error) throw new Error(translateAuthError(error.message));
+  if (error) throw new Error(translateAuthError(error));
 }
 
 export async function resetPassword(email: string) {
-  const { error } = await supabase.auth.resetPasswordForEmail(email);
-  if (error) throw new Error(translateAuthError(error.message));
+  const { data, error } = await supabase.auth.resetPasswordForEmail(email);
+  if (error) throw new Error(translateAuthError(error));
+  return data;
 }
 
 export async function getSession(): Promise<Session | null> {
   const { data, error } = await supabase.auth.getSession();
-  if (error) throw new Error(translateAuthError(error.message));
+  if (error) throw new Error(translateAuthError(error));
   return data.session;
 }
 
 export function onAuthStateChange(
   callback: (event: AuthChangeEvent, session: Session | null) => void,
-) {
+): Subscription {
   const {
     data: { subscription },
   } = supabase.auth.onAuthStateChange(callback);

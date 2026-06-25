@@ -1,194 +1,184 @@
-import { useState } from "react";
-import {
-  Modal,
-  Pressable,
-  ScrollView,
-  Text,
-  TextInput,
-  View,
-} from "react-native";
+import { useEffect, useState } from "react";
 import { Ionicons } from "@expo/vector-icons";
+import { Modal, Pressable, ScrollView, Text, View } from "react-native";
+
 import type { OpportunityFilters } from "../types/opportunity";
-import { MODALIDADES } from "../types/opportunity";
 import { Button } from "./ui/Button";
+import { Chip } from "./ui/Chip";
+import { Input } from "./ui/Input";
 
 const UFS = [
-  "AC", "AL", "AP", "AM", "BA", "CE", "DF", "ES", "GO",
-  "MA", "MT", "MS", "MG", "PA", "PB", "PR", "PE", "PI",
-  "RJ", "RN", "RS", "RO", "RR", "SC", "SP", "SE", "TO",
+  "AC", "AL", "AP", "AM", "BA", "CE", "DF", "ES", "GO", "MA", "MT", "MS",
+  "MG", "PA", "PB", "PR", "PE", "PI", "RJ", "RN", "RS", "RO", "RR", "SC",
+  "SP", "SE", "TO",
 ];
 
-interface FilterSheetProps {
+const MODALIDADES: { id: number; nome: string }[] = [
+  { id: 6, nome: "Pregão Eletrônico" },
+  { id: 7, nome: "Pregão Presencial" },
+  { id: 4, nome: "Concorrência Eletrônica" },
+  { id: 5, nome: "Concorrência Presencial" },
+  { id: 8, nome: "Dispensa" },
+  { id: 9, nome: "Inexigibilidade" },
+  { id: 12, nome: "Credenciamento" },
+  { id: 3, nome: "Concurso" },
+  { id: 1, nome: "Leilão Eletrônico" },
+  { id: 2, nome: "Diálogo Competitivo" },
+];
+
+type Props = {
   visible: boolean;
-  filters: OpportunityFilters;
+  value: OpportunityFilters;
   onClose: () => void;
   onApply: (filters: OpportunityFilters) => void;
+};
+
+function toPositiveNumber(text: string): number | undefined {
+  const n = Number(text.replace(/[^\d]/g, ""));
+  return Number.isFinite(n) && n > 0 ? n : undefined;
 }
 
-function Chip({
-  label,
-  selected,
-  onPress,
-}: {
-  label: string;
-  selected: boolean;
-  onPress: () => void;
-}) {
-  return (
-    <Pressable
-      className={`rounded-full border px-3 py-1.5 ${
-        selected ? "border-blue-600 bg-blue-600" : "border-gray-300 bg-white"
-      }`}
-      onPress={onPress}
-    >
-      <Text
-        className={`text-sm font-medium ${selected ? "text-white" : "text-gray-700"}`}
-      >
-        {label}
-      </Text>
-    </Pressable>
-  );
-}
+export function FilterSheet({ visible, value, onClose, onApply }: Props) {
+  const [draft, setDraft] = useState<OpportunityFilters>(value);
 
-function SectionLabel({ children }: { children: string }) {
-  return (
-    <Text className="mb-2 mt-5 text-sm font-semibold text-gray-900">
-      {children}
-    </Text>
-  );
-}
+  // Sincroniza o rascunho com os filtros vigentes sempre que reabre.
+  useEffect(() => {
+    if (visible) setDraft(value);
+  }, [visible, value]);
 
-export function FilterSheet({
-  visible,
-  filters,
-  onClose,
-  onApply,
-}: FilterSheetProps) {
-  const [uf, setUf] = useState(filters.uf);
-  const [modalidade, setModalidade] = useState(filters.modalidade);
-  const [valorMin, setValorMin] = useState(
-    filters.valorMin != null ? String(filters.valorMin) : "",
-  );
-  const [valorMax, setValorMax] = useState(
-    filters.valorMax != null ? String(filters.valorMax) : "",
-  );
-  const [dataInicio, setDataInicio] = useState(filters.dataInicio ?? "");
-  const [dataFim, setDataFim] = useState(filters.dataFim ?? "");
-
-  function handleApply() {
-    onApply({
-      ...filters,
-      uf,
-      modalidade,
-      valorMin: valorMin ? Number(valorMin) : undefined,
-      valorMax: valorMax ? Number(valorMax) : undefined,
-      dataInicio: dataInicio || undefined,
-      dataFim: dataFim || undefined,
-    });
-    onClose();
-  }
-
-  function handleClear() {
-    setUf(undefined);
-    setModalidade(undefined);
-    setValorMin("");
-    setValorMax("");
-    setDataInicio("");
-    setDataFim("");
-  }
+  const patch = (next: Partial<OpportunityFilters>) =>
+    setDraft((prev) => ({ ...prev, ...next }));
 
   return (
     <Modal
       visible={visible}
-      animationType="slide"
       transparent
+      animationType="slide"
       onRequestClose={onClose}
     >
-      <View className="flex-1 justify-end bg-black/40">
-        <View className="max-h-[85%] rounded-t-3xl bg-white px-6 pb-8 pt-4">
-          <View className="mb-2 flex-row items-center justify-between">
-            <Text className="text-xl font-bold text-gray-900">Filtros</Text>
-            <Pressable onPress={onClose} hitSlop={8}>
-              <Ionicons name="close" size={24} color="#374151" />
-            </Pressable>
-          </View>
+      <Pressable className="flex-1 bg-black/40" onPress={onClose} />
 
-          <ScrollView showsVerticalScrollIndicator={false}>
-            <SectionLabel>Estado (UF)</SectionLabel>
-            <View className="flex-row flex-wrap gap-2">
-              {UFS.map((sigla) => (
+      <View
+        className="absolute bottom-0 w-full gap-5 rounded-t-3xl bg-white p-6"
+        style={{ maxHeight: "85%" }}
+      >
+        <View className="flex-row items-center justify-between">
+          <Text className="text-xl font-bold text-slate-900">Filtros</Text>
+          <Pressable onPress={onClose} hitSlop={8} accessibilityRole="button">
+            <Ionicons name="close" size={24} color="#0f172a" />
+          </Pressable>
+        </View>
+
+        <ScrollView
+          showsVerticalScrollIndicator={false}
+          contentContainerClassName="gap-6"
+        >
+          {/* UF */}
+          <View className="gap-2">
+            <Text className="text-sm font-semibold text-slate-700">Estado (UF)</Text>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerClassName="gap-2 pr-2"
+            >
+              {UFS.map((uf) => (
                 <Chip
-                  key={sigla}
-                  label={sigla}
-                  selected={uf === sigla}
-                  onPress={() => setUf(uf === sigla ? undefined : sigla)}
+                  key={uf}
+                  label={uf}
+                  selected={draft.uf === uf}
+                  onPress={() => patch({ uf: draft.uf === uf ? undefined : uf })}
                 />
               ))}
-            </View>
+            </ScrollView>
+          </View>
 
-            <SectionLabel>Modalidade</SectionLabel>
+          {/* Modalidade */}
+          <View className="gap-2">
+            <Text className="text-sm font-semibold text-slate-700">Modalidade</Text>
             <View className="flex-row flex-wrap gap-2">
-              {Object.entries(MODALIDADES).map(([code, nome]) => (
+              {MODALIDADES.map((m) => (
                 <Chip
-                  key={code}
-                  label={nome}
-                  selected={modalidade === Number(code)}
+                  key={m.id}
+                  label={m.nome}
+                  selected={draft.modalidade === m.id}
                   onPress={() =>
-                    setModalidade(
-                      modalidade === Number(code) ? undefined : Number(code),
-                    )
+                    patch({
+                      modalidade: draft.modalidade === m.id ? undefined : m.id,
+                    })
                   }
                 />
               ))}
             </View>
+          </View>
 
-            <SectionLabel>Faixa de valor estimado (R$)</SectionLabel>
+          {/* Faixa de valor */}
+          <View className="gap-2">
+            <Text className="text-sm font-semibold text-slate-700">
+              Faixa de valor (R$)
+            </Text>
             <View className="flex-row gap-3">
-              <TextInput
-                className="flex-1 rounded-xl border border-gray-300 px-4 py-3 text-base"
-                placeholder="Mínimo"
-                placeholderTextColor="#9ca3af"
-                keyboardType="numeric"
-                value={valorMin}
-                onChangeText={setValorMin}
-              />
-              <TextInput
-                className="flex-1 rounded-xl border border-gray-300 px-4 py-3 text-base"
-                placeholder="Máximo"
-                placeholderTextColor="#9ca3af"
-                keyboardType="numeric"
-                value={valorMax}
-                onChangeText={setValorMax}
-              />
+              <View className="flex-1">
+                <Input
+                  placeholder="Mínimo"
+                  keyboardType="numeric"
+                  value={draft.valorMin != null ? String(draft.valorMin) : ""}
+                  onChangeText={(t) => patch({ valorMin: toPositiveNumber(t) })}
+                />
+              </View>
+              <View className="flex-1">
+                <Input
+                  placeholder="Máximo"
+                  keyboardType="numeric"
+                  value={draft.valorMax != null ? String(draft.valorMax) : ""}
+                  onChangeText={(t) => patch({ valorMax: toPositiveNumber(t) })}
+                />
+              </View>
             </View>
+          </View>
 
-            <SectionLabel>Período de publicação</SectionLabel>
+          {/* Período */}
+          <View className="gap-2">
+            <Text className="text-sm font-semibold text-slate-700">
+              Período de publicação
+            </Text>
             <View className="flex-row gap-3">
-              <TextInput
-                className="flex-1 rounded-xl border border-gray-300 px-4 py-3 text-base"
-                placeholder="Início (AAAA-MM-DD)"
-                placeholderTextColor="#9ca3af"
-                value={dataInicio}
-                onChangeText={setDataInicio}
-              />
-              <TextInput
-                className="flex-1 rounded-xl border border-gray-300 px-4 py-3 text-base"
-                placeholder="Fim (AAAA-MM-DD)"
-                placeholderTextColor="#9ca3af"
-                value={dataFim}
-                onChangeText={setDataFim}
-              />
+              <View className="flex-1">
+                <Input
+                  placeholder="Início (AAAA-MM-DD)"
+                  autoCapitalize="none"
+                  value={draft.dataInicio ?? ""}
+                  onChangeText={(t) => patch({ dataInicio: t || undefined })}
+                />
+              </View>
+              <View className="flex-1">
+                <Input
+                  placeholder="Fim (AAAA-MM-DD)"
+                  autoCapitalize="none"
+                  value={draft.dataFim ?? ""}
+                  onChangeText={(t) => patch({ dataFim: t || undefined })}
+                />
+              </View>
             </View>
+          </View>
+        </ScrollView>
 
-            <View className="mt-8 gap-3">
-              <Button title="Aplicar filtros" onPress={handleApply} />
-              <Button
-                title="Limpar filtros"
-                variant="secondary"
-                onPress={handleClear}
-              />
-            </View>
-          </ScrollView>
+        <View className="flex-row gap-3">
+          <View className="flex-1">
+            <Button
+              title="Limpar"
+              variant="secondary"
+              onPress={() => setDraft({})}
+            />
+          </View>
+          <View className="flex-1">
+            <Button
+              title="Aplicar"
+              onPress={() => {
+                onApply(draft);
+                onClose();
+              }}
+            />
+          </View>
         </View>
       </View>
     </Modal>

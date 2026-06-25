@@ -5,41 +5,50 @@ import {
   type PressableProps,
 } from "react-native";
 
-interface ButtonProps extends PressableProps {
+type Variant = "primary" | "secondary" | "ghost";
+
+type ButtonProps = Omit<PressableProps, "children"> & {
   title: string;
-  variant?: "primary" | "secondary";
   loading?: boolean;
-}
+  variant?: Variant;
+};
+
+const containerByVariant: Record<Variant, string> = {
+  primary: "bg-blue-600",
+  secondary: "bg-slate-100",
+  ghost: "bg-transparent",
+};
+
+const textByVariant: Record<Variant, string> = {
+  primary: "text-white",
+  secondary: "text-slate-900",
+  ghost: "text-blue-600",
+};
 
 export function Button({
   title,
-  variant = "primary",
   loading = false,
+  variant = "primary",
   disabled,
   ...props
 }: ButtonProps) {
   const isDisabled = disabled || loading;
 
-  const containerClass =
-    variant === "primary"
-      ? "rounded-xl bg-blue-600 py-3.5 items-center active:bg-blue-700"
-      : "rounded-xl border border-blue-600 bg-white py-3.5 items-center active:bg-blue-50";
-
-  const textClass =
-    variant === "primary"
-      ? "text-base font-semibold text-white"
-      : "text-base font-semibold text-blue-600";
-
   return (
     <Pressable
-      className={`${containerClass} ${isDisabled ? "opacity-50" : ""}`}
+      accessibilityRole="button"
       disabled={isDisabled}
+      className={`w-full flex-row items-center justify-center rounded-xl px-6 py-4 ${
+        containerByVariant[variant]
+      } ${isDisabled ? "opacity-60" : ""}`}
       {...props}
     >
       {loading ? (
-        <ActivityIndicator color={variant === "primary" ? "#fff" : "#2563eb"} />
+        <ActivityIndicator color={variant === "primary" ? "#ffffff" : "#2563eb"} />
       ) : (
-        <Text className={textClass}>{title}</Text>
+        <Text className={`text-base font-semibold ${textByVariant[variant]}`}>
+          {title}
+        </Text>
       )}
     </Pressable>
   );

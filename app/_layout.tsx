@@ -1,17 +1,23 @@
 import "../global.css";
-import { useEffect } from "react";
+
+import { useEffect, useState } from "react";
 import { ActivityIndicator, View } from "react-native";
 import { Stack, useRouter, useSegments } from "expo-router";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { StatusBar } from "expo-status-bar";
+import { SafeAreaProvider } from "react-native-safe-area-context";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+
 import { useAuthStore } from "../stores/authStore";
 
-const queryClient = new QueryClient();
-
+/**
+ * Redireciona entre os grupos (auth) e (app) conforme o estado de autenticação.
+ * Só age depois que a sessão inicial foi resolvida (isLoading === false).
+ */
 function useProtectedRoute() {
-  const { isAuthenticated, isLoading } = useAuthStore();
   const segments = useSegments();
   const router = useRouter();
+  const isLoading = useAuthStore((s) => s.isLoading);
+  const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
 
   useEffect(() => {
     if (isLoading) return;
@@ -21,37 +27,48 @@ function useProtectedRoute() {
     if (!isAuthenticated && !inAuthGroup) {
       router.replace("/(auth)/welcome");
     } else if (isAuthenticated && inAuthGroup) {
-      router.replace("/(app)/buscar");
+      router.replace("/(app)");
     }
-  }, [isAuthenticated, isLoading, segments, router]);
+  }, [isLoading, isAuthenticated, segments, router]);
 }
 
-function LoadingScreen() {
+function RootLayoutNav() {
+  const isLoading = useAuthStore((s) => s.isLoading);
+
+  useProtectedRoute();
+
+  if (isLoading) {
+    return (
+      <View className="flex-1 items-center justify-center bg-white">
+        <ActivityIndicator size="large" color="#2563eb" />
+      </View>
+    );
+  }
+
   return (
-    <View className="flex-1 items-center justify-center bg-white">
-      <ActivityIndicator size="large" />
-    </View>
+    <Stack screenOptions={{ headerShown: false }}>
+      <Stack.Screen name="(auth)" />
+      <Stack.Screen name="(app)" />
+    </Stack>
   );
 }
 
 export default function RootLayout() {
-  const { isLoading, initialize } = useAuthStore();
+  const [queryClient] = useState(() => new QueryClient());
+  const initialize = useAuthStore((s) => s.initialize);
 
-  useEffect(() => initialize(), [initialize]);
-
-  useProtectedRoute();
+  useEffect(() => {
+    // Resolve a sessão persistida e assina mudanças de auth.
+    const unsubscribe = initialize();
+    return unsubscribe;
+  }, [initialize]);
 
   return (
     <QueryClientProvider client={queryClient}>
-      {isLoading ? (
-        <LoadingScreen />
-      ) : (
-        <Stack screenOptions={{ headerShown: false }}>
-          <Stack.Screen name="(auth)" />
-          <Stack.Screen name="(app)" />
-        </Stack>
-      )}
-      <StatusBar style="auto" />
+      <SafeAreaProvider>
+        <RootLayoutNav />
+        <StatusBar style="auto" />
+      </SafeAreaProvider>
     </QueryClientProvider>
   );
 }

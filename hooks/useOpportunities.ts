@@ -1,17 +1,23 @@
 import { useInfiniteQuery } from "@tanstack/react-query";
+
 import { searchOpportunities } from "../services/pncp";
 import type { OpportunityFilters } from "../types/opportunity";
 
-const STALE_TIME_MS = 15 * 60 * 1000; // 15 min de cache client-side
+const STALE_TIME = 15 * 60 * 1000; // 15 min de cache client-side
+const PAGE_SIZE = 20;
 
-export function useOpportunities(filters: OpportunityFilters) {
+export type UseOpportunitiesParams = OpportunityFilters & {
+  keyword?: string;
+};
+
+export function useOpportunities(params: UseOpportunitiesParams = {}) {
   return useInfiniteQuery({
-    queryKey: ["opportunities", filters],
+    queryKey: ["opportunities", params],
     queryFn: ({ pageParam }) =>
-      searchOpportunities({ ...filters, page: pageParam, limit: 20 }),
+      searchOpportunities({ ...params, page: pageParam, limit: PAGE_SIZE }),
     initialPageParam: 1,
     getNextPageParam: (lastPage) =>
       lastPage.hasMore ? lastPage.page + 1 : undefined,
-    staleTime: STALE_TIME_MS,
+    staleTime: STALE_TIME,
   });
 }

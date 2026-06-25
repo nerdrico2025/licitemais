@@ -1,97 +1,80 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { useRouter } from "expo-router";
+import { router } from "expo-router";
+
+import { toastError } from "../lib/toast";
 import { supabase } from "../services/supabase";
-import { showError, showToast } from "../lib/toast";
+import { useAuthStore } from "../stores/authStore";
 import type { BiddingOpportunity } from "../types/opportunity";
 
-interface CreateProcessResult {
-  processId: string;
-  alreadyExisted: boolean;
-}
+const GENERIC_ERROR =
+  "Não foi possível monitorar esta licitação agora. Tente novamente em instantes.";
 
-async function createProcess(
-  opportunity: BiddingOpportunity,
-): Promise<CreateProcessResult> {
-  // 1. Garante a oportunidade no cache compartilhado.
-  //    ignoreDuplicates (DO NOTHING) evita UPDATE, que a RLS não permite.
-  const { error: upsertError } = await supabase
-    .from("bidding_opportunities")
-    .upsert(opportunity, { onConflict: "external_id", ignoreDuplicates: true });
-  if (upsertError) {
-    throw new Error("Não foi possível salvar a licitação. Tente novamente.");
-  }
+type MonitorResult = { processId: string; isNew: boolean };
 
-  const { data: opp, error: selectError } = await supabase
-    .from("bidding_opportunities")
-    .select("id")
-    .eq("external_id", opportunity.external_id)
-    .single();
-  if (selectError || !opp) {
-    throw new Error("Não foi possível salvar a licitação. Tente novamente.");
-  }
-
-  // 2. Idempotente: se já existe processo deste usuário, reaproveita.
-  //    (a RLS garante que só os processos do próprio usuário são visíveis)
-  const { data: existing } = await supabase
-    .from("user_processes")
-    .select("id")
-    .eq("opportunity_id", opp.id)
-    .maybeSingle();
-  if (existing) {
-    return { processId: existing.id, alreadyExisted: true };
-  }
-
-  const { data: created, error: insertError } = await supabase
-    .from("user_processes")
-    .insert({ opportunity_id: opp.id })
-    .select("id")
-    .single();
-
-  if (insertError) {
-    // 23505 = unique violation: outro fluxo criou o processo no meio do caminho
-    if (insertError.code === "23505") {
-      const { data: raced } = await supabase
-        .from("user_processes")
-        .select("id")
-        .eq("opportunity_id", opp.id)
-        .single();
-      if (raced) return { processId: raced.id, alreadyExisted: true };
-    }
-    throw new Error("Não foi possível criar o processo. Tente novamente.");
-  }
-
-  // 3. Dispara a análise por IA sem bloquear a navegação
-  supabase.functions
-    .invoke("analyze-edital", { body: { processId: created.id } })
-    .catch(() => {});
-
-  return { processId: created.id, alreadyExisted: false };
-}
-
+/**
+ * Monitora uma licitação (RF07). Fluxo:
+ *  1. upsert da BiddingOpportunity em bidding_opportunities (por external_id);
+ *  2. idempotência: se já existe user_processes para (user, opportunity), reusa;
+ *     senão insere com status SAVED;
+ *  3. dispara analyze-edital (fire-and-forget) só para processos novos;
+ *  4. navega para /(app)/processos/[id].
+ *
+ * Obs.: a Edge Function "analyze-edital" ainda não está implantada — a invocação
+ * degrada graciosamente (.catch) e vira no-op até a função existir.
+ */
 export function useCreateProcess() {
-  const router = useRouter();
   const queryClient = useQueryClient();
 
-  return useMutation({
-    mutationFn: createProcess,
-    onSuccess: ({ processId, alreadyExisted }) => {
-      if (alreadyExisted) {
-        showToast("Você já monitora esta licitação.");
-      } else {
-        showToast("Licitação adicionada aos seus processos.");
-        queryClient.invalidateQueries({ queryKey: ["processes"] });
-      }
+  return useMutation<MonitorResult, Error, BiddingOpportunity>({
+    mutationFn: async (opportunity) => {
+      const user = useAuthStore.getState().user;
+      if (!user) throw new Error("Sessão expirada. Faça login novamente.");
+
+      // 1. upsert da oportunidade (colunas espelham BiddingOpportunity 1:1).
+      const { data: opp, error: oppError } = await supabase
+        .from("bidding_opportunities")
+        .upsert(opportunity, { onConflict: "external_id" })
+        .select("id")
+        .single();
+      if (oppError || !opp) throw oppError ?? new Error(GENERIC_ERROR);
+
+      // 2. idempotência: já monitora? reusa o processo existente.
+      const { data: existing, error: existingError } = await supabase
+        .from("user_processes")
+        .select("id")
+        .eq("user_id", user.id)
+        .eq("opportunity_id", opp.id)
+        .maybeSingle();
+      if (existingError) throw existingError;
+      if (existing) return { processId: existing.id, isNew: false };
+
+      // 2b. cria o processo (user_id default = auth.uid(); status default SAVED).
+      const { data: created, error: createError } = await supabase
+        .from("user_processes")
+        .insert({ opportunity_id: opp.id })
+        .select("id")
+        .single();
+      if (createError || !created) throw createError ?? new Error(GENERIC_ERROR);
+
+      // 3. análise por IA — fire-and-forget, não bloqueia a navegação.
+      void supabase.functions
+        .invoke("analyze-edital", { body: { processId: created.id } })
+        .catch(() => {
+          /* função ainda não implantada / offline — ignora */
+        });
+
+      return { processId: created.id, isNew: true };
+    },
+    onSuccess: ({ processId }) => {
+      queryClient.invalidateQueries({ queryKey: ["user_processes"] });
+      // 4. navega para o processo (novo ou existente).
       router.push({
         pathname: "/(app)/processos/[id]",
         params: { id: processId },
       });
     },
     onError: (error) => {
-      showError(
-        error instanceof Error
-          ? error.message
-          : "Algo deu errado. Tente novamente.",
-      );
+      toastError(error.message || GENERIC_ERROR);
     },
   });
 }

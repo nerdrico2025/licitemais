@@ -1,70 +1,77 @@
 # Licite Mais
 
-App mobile (Expo + React Native) com backend Supabase.
+Aplicativo mobile (Expo / React Native) com backend Supabase para acompanhamento
+de licitações e processos.
 
 ## Stack
 
-- **Expo SDK 56** + TypeScript
-- **Expo Router** — navegação por arquivos, grupos `(auth)` e `(app)`
-- **NativeWind 4** (Tailwind CSS 3) — estilização
+- **Expo SDK 56** + React Native 0.85 + TypeScript
+- **Expo Router** — navegação por arquivos com grupos `(auth)` e `(app)`
+- **NativeWind v4** (Tailwind CSS) — estilização
 - **Zustand** — estado global
-- **TanStack React Query** — cache e data fetching
-- **Supabase** — auth, banco e edge functions
+- **TanStack Query** — data fetching / cache
+- **Supabase** (`@supabase/supabase-js`) — auth + banco de dados
 - **React Hook Form + Zod** — formulários e validação
+- **expo-secure-store**, **AsyncStorage**, **expo-web-browser**
+
+## Estrutura
+
+```
+app/                 # Rotas (Expo Router)
+  (auth)/            #   fluxo não autenticado
+  (app)/             #   fluxo autenticado
+components/          # Componentes compartilhados
+  ui/                #   primitivos de UI
+hooks/               # React hooks
+services/            # Clientes externos (supabase.ts, etc.)
+stores/              # Stores Zustand
+types/               # Tipos compartilhados
+supabase/            # Projeto Supabase (config, migrations, functions)
+```
+
+O entry (`index.ts`) carrega o polyfill de URL **antes** do Expo Router, exigido
+pelo `@supabase/supabase-js` no React Native.
 
 ## Setup
 
-1. Instale as dependências:
+1. **Instale as dependências**
 
    ```bash
-   npm install --legacy-peer-deps
+   npm install
    ```
 
-2. Copie o arquivo de ambiente e preencha com as credenciais do seu projeto Supabase (Dashboard → Settings → API):
+2. **Configure as variáveis de ambiente**
 
    ```bash
    cp .env.example .env
    ```
 
-3. Inicie o app:
+   Preencha com os valores do seu projeto Supabase
+   (Project Settings → API). Use a chave **anon** (nunca a `service_role`):
 
-   ```bash
-   npx expo start
+   ```
+   EXPO_PUBLIC_SUPABASE_URL=https://seu-projeto.supabase.co
+   EXPO_PUBLIC_SUPABASE_ANON_KEY=sua-anon-key
    ```
 
-## Supabase local (opcional)
+3. **Rode o app**
 
-Requer Docker e a [Supabase CLI](https://supabase.com/docs/guides/cli):
+   ```bash
+   npm run start      # Expo Dev Server (escolha iOS / Android / Web)
+   npm run ios
+   npm run android
+   npm run web
+   ```
+
+## Supabase (local)
+
+A pasta `supabase/` é gerenciada pela [Supabase CLI](https://supabase.com/docs/guides/local-development).
 
 ```bash
-supabase start          # sobe o stack local
-supabase db reset       # aplica as migrations
-supabase functions serve # roda as edge functions localmente
+supabase start     # sobe o stack local (Docker)
+supabase status    # mostra URLs e chaves locais
+supabase stop
 ```
 
-## Keepalive (GitHub Actions)
-
-O workflow [`.github/workflows/keepalive.yml`](.github/workflows/keepalive.yml) faz, a cada 3 dias, um `curl` na Edge Function `ping` (`supabase/functions/ping`), que executa um `SELECT` trivial no banco. Isso gera atividade real no projeto e evita que o plano free do Supabase seja pausado por inatividade.
-
-Para configurar:
-
-1. No GitHub, vá em **Settings → Secrets and variables → Actions → New repository secret**.
-2. Crie o secret `SUPABASE_URL` com a URL do seu projeto (Dashboard → Settings → API → Project URL), por exemplo `https://xxxxxxxx.supabase.co`.
-3. (Opcional) Para testar manualmente, rode o workflow via aba **Actions → Keepalive → Run workflow** (`workflow_dispatch`).
-
-A função `ping` não exige autenticação (`verify_jwt = false` em `supabase/config.toml`), então nenhuma outra credencial é necessária.
-
-## Estrutura
-
-```
-app/            # rotas (Expo Router)
-  (auth)/       # telas públicas (login etc.)
-  (app)/        # telas autenticadas
-components/     # componentes compartilhados
-  ui/           # componentes de UI base
-hooks/          # hooks customizados
-services/       # clientes externos (supabase.ts)
-stores/         # stores Zustand
-types/          # tipos compartilhados
-supabase/       # config, migrations e functions
-```
+> O schema e as Edge Functions ainda não foram criados — apenas a estrutura
+> inicial do projeto (`supabase init`).

@@ -1,77 +1,82 @@
-import { Pressable, Text, View } from "react-native";
-import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
-import type { BiddingOpportunity } from "../types/opportunity";
-import { formatCurrency, formatDateTime } from "../lib/format";
+import { router } from "expo-router";
+import { Pressable, Text, View } from "react-native";
 
-interface BidCardProps {
-  opportunity: BiddingOpportunity;
+import { formatCurrency, formatDate } from "../lib/format";
+import type { BiddingOpportunity } from "../types/opportunity";
+
+function ModalityBadge({ label }: { label: string }) {
+  return (
+    <View className="self-start rounded-full bg-blue-50 px-2.5 py-1">
+      <Text className="text-xs font-semibold text-blue-700">{label}</Text>
+    </View>
+  );
 }
 
-export function BidCard({ opportunity }: BidCardProps) {
-  const router = useRouter();
-  const value = formatCurrency(opportunity.estimated_value);
-  const openingDate = formatDateTime(opportunity.opening_date);
+export function BidCard({ opportunity }: { opportunity: BiddingOpportunity }) {
+  const openDetails = () =>
+    router.push({
+      pathname: "/(app)/detalhes/[external_id]",
+      // numeroControlePNCP contém "/" (ex.: "...-000192/2026"); sem encode o
+      // Expo Router o interpreta como separador de segmento e a rota não casa.
+      params: { external_id: encodeURIComponent(opportunity.external_id) },
+    });
 
   return (
     <Pressable
-      className="mb-3 rounded-2xl border border-gray-200 bg-white p-4 active:bg-gray-50"
-      onPress={() =>
-        router.push({
-          pathname: "/(app)/detalhes/[id]",
-          params: { id: opportunity.external_id },
-        })
-      }
+      onPress={openDetails}
+      accessibilityRole="button"
+      className="gap-3 rounded-2xl border border-slate-200 bg-white p-4"
     >
-      {opportunity.bidding_mode ? (
-        <View className="mb-2 self-start rounded-full bg-blue-100 px-2.5 py-0.5">
-          <Text className="text-xs font-semibold text-blue-700">
-            {opportunity.bidding_mode}
-          </Text>
-        </View>
-      ) : null}
+      <View className="flex-row items-center justify-between gap-2">
+        {opportunity.bidding_mode ? (
+          <ModalityBadge label={opportunity.bidding_mode} />
+        ) : (
+          <View />
+        )}
+        {opportunity.uf ? (
+          <Text className="text-xs font-bold text-slate-400">{opportunity.uf}</Text>
+        ) : null}
+      </View>
 
-      <Text className="text-base font-semibold text-gray-900" numberOfLines={2}>
+      <Text numberOfLines={2} className="text-base font-semibold text-slate-900">
         {opportunity.title}
       </Text>
 
       {opportunity.agency ? (
-        <View className="mt-1.5 flex-row items-center gap-1.5">
-          <Ionicons name="business-outline" size={14} color="#6b7280" />
-          <Text className="flex-1 text-sm text-gray-500" numberOfLines={1}>
+        <View className="flex-row items-center gap-1.5">
+          <Ionicons name="business-outline" size={14} color="#64748b" />
+          <Text numberOfLines={1} className="flex-1 text-sm text-slate-500">
             {opportunity.agency}
           </Text>
         </View>
       ) : null}
 
-      <View className="mt-3 flex-row items-center justify-between">
-        {openingDate ? (
-          <View className="flex-row items-center gap-1.5">
-            <Ionicons name="calendar-outline" size={14} color="#6b7280" />
-            <Text className="text-sm text-gray-600">{openingDate}</Text>
-          </View>
-        ) : (
-          <View />
-        )}
-
-        {value ? (
-          <Text className="text-sm font-bold text-green-700">{value}</Text>
+      <View className="flex-row items-center justify-between">
+        <View className="flex-row items-center gap-1.5">
+          <Ionicons name="calendar-outline" size={14} color="#64748b" />
+          <Text className="text-sm text-slate-500">
+            {formatDate(opportunity.opening_date)}
+          </Text>
+        </View>
+        {opportunity.estimated_value != null ? (
+          <Text className="text-sm font-bold text-slate-900">
+            {formatCurrency(opportunity.estimated_value)}
+          </Text>
         ) : null}
       </View>
     </Pressable>
   );
 }
 
+/** Placeholder de carregamento com a mesma silhueta do card. */
 export function BidCardSkeleton() {
   return (
-    <View className="mb-3 rounded-2xl border border-gray-200 bg-white p-4">
-      <View className="mb-2 h-5 w-28 rounded-full bg-gray-200" />
-      <View className="h-4 w-full rounded bg-gray-200" />
-      <View className="mt-1.5 h-4 w-3/4 rounded bg-gray-200" />
-      <View className="mt-3 flex-row justify-between">
-        <View className="h-4 w-32 rounded bg-gray-200" />
-        <View className="h-4 w-24 rounded bg-gray-200" />
-      </View>
+    <View className="gap-3 rounded-2xl border border-slate-200 bg-white p-4">
+      <View className="h-5 w-28 rounded-full bg-slate-200" />
+      <View className="h-4 w-full rounded bg-slate-200" />
+      <View className="h-4 w-2/3 rounded bg-slate-200" />
+      <View className="mt-1 h-4 w-1/2 rounded bg-slate-100" />
     </View>
   );
 }
