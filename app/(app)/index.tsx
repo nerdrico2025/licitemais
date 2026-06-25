@@ -18,6 +18,11 @@ export default function Home() {
           title="Buscar licitações"
           onPress={() => router.push("/(app)/buscar")}
         />
+        <Button
+          title="Meus processos"
+          variant="secondary"
+          onPress={() => router.push("/(app)/processos")}
+        />
       </View>
     </SafeAreaView>
   );
