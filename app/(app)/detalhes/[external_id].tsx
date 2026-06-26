@@ -104,6 +104,13 @@ export default function Detalhes() {
             Não encontramos os detalhes desta licitação. Volte à busca e abra a
             licitação novamente.
           </Text>
+          <Pressable
+            onPress={() => router.replace("/(app)/buscar")}
+            accessibilityRole="button"
+            className="rounded-xl bg-slate-900 px-5 py-3"
+          >
+            <Text className="text-sm font-semibold text-white">Voltar para a busca</Text>
+          </Pressable>
         </View>
       </SafeAreaView>
     );

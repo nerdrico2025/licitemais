@@ -2,7 +2,6 @@ import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { useMemo, useState } from "react";
 import {
-  ActivityIndicator,
   FlatList,
   Modal,
   Pressable,
@@ -14,6 +13,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { KanbanBoard } from "../../../components/KanbanBoard";
+import { ProcessListSkeleton } from "../../../components/ProcessCardSkeleton";
 import { ProcessStatusBadge } from "../../../components/ProcessStatusBadge";
 import { Button } from "../../../components/ui/Button";
 import { Chip } from "../../../components/ui/Chip";
@@ -294,9 +294,7 @@ export default function Processos() {
 
       {/* Conteúdo */}
       {isLoading ? (
-        <View className="flex-1 items-center justify-center">
-          <ActivityIndicator color="#2563eb" />
-        </View>
+        <ProcessListSkeleton />
       ) : isError ? (
         <View className="flex-1 items-center justify-center gap-3 px-8">
           <Ionicons name="cloud-offline-outline" size={40} color="#94a3b8" />

@@ -6,7 +6,10 @@ import type { UpdateProcessInput, UserProcess } from "../types/process";
 import { processKey } from "./useProcess";
 import { PROCESSES_KEY } from "./useProcesses";
 
-const SELECT = "*, bidding_opportunities(*)";
+// Mesmo payload enxuto do detalhe (§8.1) — alimenta o cache de useProcess.
+const SELECT =
+  "id, status, ai_summary, checklist_state, notes, ai_processed_at, created_at, " +
+  "opportunity_id, bidding_opportunities ( id, title, agency, opening_date )";
 const GENERIC_ERROR =
   "Não foi possível atualizar o processo agora. Tente novamente em instantes.";
 

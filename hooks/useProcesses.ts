@@ -8,8 +8,11 @@ import type { UserProcess } from "../types/process";
 /** Chave da lista de processos do usuário. */
 export const PROCESSES_KEY = ["user_processes"] as const;
 
-/** select com join 1:1 na bidding_opportunity. */
-const SELECT = "*, bidding_opportunities(*)";
+// Payload enxuto p/ 3G (§8.1): só as colunas usadas na lista/Kanban — sem
+// raw_text, notes, etc. ai_summary/checklist_state alimentam o progresso (X/Y).
+const SELECT =
+  "id, status, ai_summary, checklist_state, created_at, opportunity_id, " +
+  "bidding_opportunities ( id, title, agency, opening_date )";
 
 async function fetchProcesses(): Promise<UserProcess[]> {
   // RLS restringe a auth.uid(); ordenamos do mais recente para o mais antigo.

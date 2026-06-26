@@ -46,6 +46,14 @@ function SectionTitle({ children }: { children: string }) {
   return <Text className="text-xs font-semibold uppercase tracking-wide text-slate-400">{children}</Text>;
 }
 
+function PerfilHeader() {
+  return (
+    <View className="border-b border-slate-100 px-4 py-3">
+      <Text className="text-lg font-semibold text-slate-900">Perfil</Text>
+    </View>
+  );
+}
+
 export default function Perfil() {
   const queryClient = useQueryClient();
   const user = useAuthStore((s) => s.user);
@@ -59,13 +67,14 @@ export default function Perfil() {
   const [keywords, setKeywords] = useState<string[]>([]);
   const [keywordDraft, setKeywordDraft] = useState("");
 
-  const { data: profile, isLoading } = useQuery({
+  const { data: profile, isLoading, isError, refetch } = useQuery({
     queryKey: ["profile", userId],
     enabled: !!userId,
     queryFn: async (): Promise<Profile> => {
+      // Payload enxuto (§8.1): só o que a tela usa.
       const { data, error } = await supabase
         .from("profiles")
-        .select("*")
+        .select("id, name, email, company_profile")
         .eq("id", userId as string)
         .single();
       if (error) throw error;
@@ -148,17 +157,46 @@ export default function Perfil() {
 
   if (isLoading) {
     return (
-      <SafeAreaView className="flex-1 items-center justify-center bg-white">
-        <Ionicons name="person-circle-outline" size={40} color="#cbd5e1" />
+      <SafeAreaView className="flex-1 bg-white">
+        <PerfilHeader />
+        <View className="gap-6 px-4 pt-5">
+          <View className="h-20 w-full rounded-2xl bg-slate-100" />
+          <View className="h-12 w-full rounded-xl bg-slate-100" />
+          <View className="h-12 w-full rounded-xl bg-slate-100" />
+          <View className="flex-row flex-wrap gap-2">
+            {Array.from({ length: 6 }).map((_, i) => (
+              <View key={i} className="h-9 w-12 rounded-full bg-slate-100" />
+            ))}
+          </View>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  if (isError) {
+    return (
+      <SafeAreaView className="flex-1 bg-white">
+        <PerfilHeader />
+        <View className="flex-1 items-center justify-center gap-3 px-8">
+          <Ionicons name="cloud-offline-outline" size={40} color="#94a3b8" />
+          <Text className="text-center text-base text-slate-600">
+            Não foi possível carregar seu perfil.
+          </Text>
+          <Pressable
+            onPress={() => refetch()}
+            accessibilityRole="button"
+            className="rounded-xl bg-slate-900 px-5 py-3"
+          >
+            <Text className="text-sm font-semibold text-white">Tentar novamente</Text>
+          </Pressable>
+        </View>
       </SafeAreaView>
     );
   }
 
   return (
     <SafeAreaView className="flex-1 bg-white">
-      <View className="border-b border-slate-100 px-4 py-3">
-        <Text className="text-lg font-semibold text-slate-900">Perfil</Text>
-      </View>
+      <PerfilHeader />
 
       <KeyboardAvoidingView
         className="flex-1"

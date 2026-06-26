@@ -9,7 +9,10 @@ import { PROCESSES_KEY } from "./useProcesses";
 /** Chave de um processo individual. */
 export const processKey = (id: string) => ["user_processes", id] as const;
 
-const SELECT = "*, bidding_opportunities(*)";
+// Payload enxuto p/ 3G (§8.1): colunas do detalhe (sem raw_text da oportunidade).
+const SELECT =
+  "id, status, ai_summary, checklist_state, notes, ai_processed_at, created_at, " +
+  "opportunity_id, bidding_opportunities ( id, title, agency, opening_date )";
 
 async function fetchProcess(id: string): Promise<UserProcess> {
   const { data, error } = await supabase

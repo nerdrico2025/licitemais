@@ -310,15 +310,20 @@ const TABS: { key: Tab; label: string }[] = [
 
 export default function Processo() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  const { data: process, isLoading, isError } = useProcess(id);
+  const { data: process, isLoading, isError, refetch } = useProcess(id);
   const [tab, setTab] = useState<Tab>("resumo");
 
   if (isLoading) {
     return (
       <SafeAreaView className="flex-1 bg-white">
         <Header />
-        <View className="flex-1 items-center justify-center">
-          <ActivityIndicator color="#2563eb" />
+        <View className="gap-4 px-4 pt-4">
+          <View className="h-5 w-24 rounded-full bg-slate-200" />
+          <View className="h-6 w-full rounded bg-slate-200" />
+          <View className="h-4 w-1/2 rounded bg-slate-100" />
+          <View className="mt-2 h-4 w-28 rounded bg-slate-100" />
+          <View className="h-16 w-full rounded-2xl bg-slate-100" />
+          <View className="h-16 w-full rounded-2xl bg-slate-100" />
         </View>
       </SafeAreaView>
     );
@@ -331,8 +336,15 @@ export default function Processo() {
         <View className="flex-1 items-center justify-center gap-3 px-8">
           <Ionicons name="document-outline" size={40} color="#94a3b8" />
           <Text className="text-center text-base text-slate-600">
-            Não encontramos este processo.
+            Não foi possível carregar este processo.
           </Text>
+          <Pressable
+            onPress={() => refetch()}
+            accessibilityRole="button"
+            className="rounded-xl bg-slate-900 px-5 py-3"
+          >
+            <Text className="text-sm font-semibold text-white">Tentar novamente</Text>
+          </Pressable>
         </View>
       </SafeAreaView>
     );
