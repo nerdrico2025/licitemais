@@ -6,6 +6,11 @@ import type {
 import { searchComprasnet } from "./comprasnet";
 
 const PNCP_BASE = "https://pncp.gov.br/api/consulta";
+// Busca textual: o endpoint /consulta NÃO aceita palavra-chave (ver spec
+// OpenAPI). O texto livre é atendido pela API de busca usada pelo próprio
+// site do PNCP, cujo parâmetro de termo é `q`.
+const PNCP_SEARCH = "https://pncp.gov.br/api/search";
+const PNCP_ORIGIN = "https://pncp.gov.br";
 const DEFAULT_MODALIDADE = 6; // Pregão - Eletrônico
 const DEFAULT_LIMIT = 20;
 const MIN_LIMIT = 10; // mínimo aceito pela API
@@ -119,6 +124,71 @@ function mapPncpItem(raw: any): BiddingOpportunity {
   };
 }
 
+// Mapeia um item da API de busca (/api/search) -> BiddingOpportunity.
+// Campos confirmados contra a resposta real (q=tecnologia/limpeza):
+// - description carrega o objeto da contratação (usado como título);
+// - valor_global vem null com frequência; item_url é relativo.
+function mapSearchItem(raw: any): BiddingOpportunity {
+  const objeto: string = (raw?.description ?? "").trim();
+  const orgao: string = (raw?.orgao_nome ?? "").trim();
+  const unidade: string = (raw?.unidade_nome ?? "").trim();
+  const valor = raw?.valor_global;
+  const itemUrl: string | null = raw?.item_url ?? null;
+  return {
+    external_id: String(raw?.numero_controle_pncp ?? raw?.id ?? ""),
+    source: "PNCP",
+    title: objeto || (raw?.title ?? "Contratação"),
+    description: objeto || null,
+    agency: orgao || unidade || null,
+    uasg: raw?.unidade_codigo ?? null,
+    opening_date: toISO(raw?.data_inicio_vigencia ?? raw?.data_publicacao_pncp),
+    proposal_deadline: toISO(raw?.data_fim_vigencia),
+    bidding_mode: raw?.modalidade_licitacao_nome ?? null,
+    estimated_value: Number.isFinite(valor) ? valor : null,
+    uf: raw?.uf ?? null,
+    source_url: itemUrl ? `${PNCP_ORIGIN}${itemUrl}` : null,
+    raw_text:
+      [objeto, orgao, unidade].filter(Boolean).join("\n") || null,
+    fetched_at: new Date().toISOString(),
+  };
+}
+
+/**
+ * Busca textual real via /api/search (o `q` é o parâmetro de termo). O
+ * endpoint /consulta não suporta palavra-chave, por isso a busca por termo é
+ * roteada para cá. Filtros de valor são best-effort sobre a página.
+ */
+async function searchByKeyword(
+  keyword: string,
+  params: SearchParams,
+): Promise<SearchResult> {
+  const page = params.page ?? 1;
+  const limit = Math.max(params.limit ?? DEFAULT_LIMIT, MIN_LIMIT);
+
+  const query = new URLSearchParams({
+    q: keyword,
+    tipos_documento: "edital",
+    ordenacao: "-data",
+    pagina: String(page),
+    tam_pagina: String(limit),
+  });
+  if (params.uf) query.set("ufs", params.uf);
+
+  const url = `${PNCP_SEARCH}/?${query.toString()}`;
+  const json = await withRetry(() => fetchJson(url), RETRIES);
+  const items: BiddingOpportunity[] = Array.isArray(json?.items)
+    ? json.items.map(mapSearchItem)
+    : [];
+  const total = typeof json?.total === "number" ? json.total : items.length;
+
+  // O termo já foi aplicado no servidor; reaplicar keyword aqui poderia
+  // descartar acertos cujo match veio de campos não exibidos. Só refinamos
+  // por faixa de valor (best-effort).
+  const data = applyClientFilters(items, { ...params, keyword: undefined });
+
+  return { data, total, page, hasMore: page * limit < total };
+}
+
 /**
  * A API por publicação não filtra por palavra-chave nem faixa de valor, então
  * aplicamos esses filtros sobre a página retornada (best-effort).
@@ -155,6 +225,17 @@ function applyClientFilters(
 export async function searchOpportunities(
   params: SearchParams = {},
 ): Promise<SearchResult> {
+  // Busca por termo usa a API de texto livre do PNCP (/api/search), pois o
+  // endpoint /consulta não aceita palavra-chave.
+  if (params.keyword?.trim()) {
+    try {
+      const byKeyword = await searchByKeyword(params.keyword.trim(), params);
+      if (byKeyword.data.length > 0 || byKeyword.total > 0) return byKeyword;
+    } catch {
+      // cai para o fluxo padrão (publicacao + fallback) abaixo.
+    }
+  }
+
   const page = params.page ?? 1;
   const limit = Math.max(params.limit ?? DEFAULT_LIMIT, MIN_LIMIT);
   const modalidade = params.modalidade ?? DEFAULT_MODALIDADE;
