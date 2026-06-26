@@ -19,6 +19,7 @@ const COLUMNS: { status: ProcessStatus; label: string }[] = [
   { status: "SUBMITTED", label: "Enviado" },
   { status: "WON", label: "Ganhou" },
   { status: "LOST", label: "Perdeu" },
+  { status: "ERROR", label: "Erro" },
 ];
 
 /** WON/LOST pedem confirmação antes de aplicar. */

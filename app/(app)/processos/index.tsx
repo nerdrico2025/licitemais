@@ -33,6 +33,7 @@ const STATUS_ORDER: ProcessStatus[] = [
   "SUBMITTED",
   "WON",
   "LOST",
+  "ERROR",
 ];
 
 type ProcessFilters = {

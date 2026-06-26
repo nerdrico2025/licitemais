@@ -12,7 +12,7 @@ export const PROCESSES_KEY = ["user_processes"] as const;
 // raw_text, notes, etc. ai_summary/checklist_state alimentam o progresso (X/Y).
 const SELECT =
   "id, status, ai_summary, checklist_state, created_at, opportunity_id, " +
-  "bidding_opportunities ( id, title, agency, opening_date )";
+  "bidding_opportunities ( id, title, agency, opening_date, estimated_value )";
 
 async function fetchProcesses(): Promise<UserProcess[]> {
   // RLS restringe a auth.uid(); ordenamos do mais recente para o mais antigo.
