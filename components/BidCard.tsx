@@ -23,6 +23,33 @@ function CategoryBadge({ label }: { label: string }) {
   );
 }
 
+/**
+ * Indicador de relevância (relevanceScorer). >=60 verde "Alta relevância";
+ * 30–59 amarelo "Relevância média"; <30 só um ponto cinza (discreto).
+ */
+function RelevanceBadge({ score }: { score: number }) {
+  if (score >= 60) {
+    return (
+      <View className="self-start rounded-full bg-green-100 px-2.5 py-1">
+        <Text className="text-xs font-semibold text-green-700">Alta relevância</Text>
+      </View>
+    );
+  }
+  if (score >= 30) {
+    return (
+      <View className="self-start rounded-full bg-amber-100 px-2.5 py-1">
+        <Text className="text-xs font-semibold text-amber-700">Relevância média</Text>
+      </View>
+    );
+  }
+  return (
+    <View
+      accessibilityLabel="Baixa relevância"
+      className="h-2 w-2 self-center rounded-full bg-slate-300"
+    />
+  );
+}
+
 export function BidCard({ opportunity }: { opportunity: BiddingOpportunity }) {
   const openDetails = () =>
     router.push({
@@ -45,6 +72,9 @@ export function BidCard({ opportunity }: { opportunity: BiddingOpportunity }) {
           ) : null}
           {opportunity.category ? (
             <CategoryBadge label={CATEGORY_LABELS[opportunity.category]} />
+          ) : null}
+          {opportunity.relevanceScore != null ? (
+            <RelevanceBadge score={opportunity.relevanceScore} />
           ) : null}
         </View>
         {opportunity.uf ? (

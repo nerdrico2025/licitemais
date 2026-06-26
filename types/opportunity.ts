@@ -44,6 +44,8 @@ export type BiddingOpportunity = {
   pncp_control_number: string | null;
   /** Tema inferido por IA; undefined = ainda não classificado. */
   category?: OpportunityCategory | null;
+  /** Relevância 0–100 vs. a busca (relevanceScorer); undefined = não pontuado. */
+  relevanceScore?: number;
   /** ISO 8601 — quando o app buscou o registro. */
   fetched_at: string;
 };
@@ -61,12 +63,19 @@ export type OpportunityFilters = {
   dataInicio?: string;
   /** YYYY-MM-DD */
   dataFim?: string;
+  /** Filtro de relevância (client-side sobre a página). undefined = sem filtro. */
+  relevanceFilter?: RelevanceFilter;
 };
+
+/** Faixa mínima de relevância: high >= 60, medium >= 30, all = tudo. */
+export type RelevanceFilter = "all" | "high" | "medium";
 
 export type SearchParams = OpportunityFilters & {
   keyword?: string;
   page?: number;
   limit?: number;
+  /** Termos para o scoring de relevância (normalmente a keyword da busca). */
+  relevanceKeywords?: string[];
 };
 
 export type SearchResult = {

@@ -3,7 +3,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { Modal, Pressable, ScrollView, Text, View } from "react-native";
 
 import { CATEGORIES } from "../lib/categories";
-import type { OpportunityFilters } from "../types/opportunity";
+import type { OpportunityFilters, RelevanceFilter } from "../types/opportunity";
 import { Button } from "./ui/Button";
 import { Chip } from "./ui/Chip";
 import { Input } from "./ui/Input";
@@ -27,6 +27,13 @@ const MODALIDADES: { id: number; nome: string }[] = [
   { id: 3, nome: "Concurso" },
   { id: 1, nome: "Leilão Eletrônico" },
   { id: 2, nome: "Diálogo Competitivo" },
+];
+
+// "all" é representado por undefined no filtro (não conta como filtro ativo).
+const RELEVANCE_OPTIONS: { value: RelevanceFilter; label: string }[] = [
+  { value: "all", label: "Todos os resultados" },
+  { value: "medium", label: "Relevância média ou alta (≥ 30)" },
+  { value: "high", label: "Alta relevância (≥ 60)" },
 ];
 
 type Props = {
@@ -107,6 +114,28 @@ export function FilterSheet({ visible, value, onClose, onApply }: Props) {
                   onPress={() =>
                     patch({
                       categoria: draft.categoria === c.id ? undefined : c.id,
+                    })
+                  }
+                />
+              ))}
+            </View>
+          </View>
+
+          {/* Relevância (scoring client-side sobre a página) */}
+          <View className="gap-2">
+            <Text className="text-sm font-semibold text-slate-700">
+              Filtrar por relevância
+            </Text>
+            <View className="flex-row flex-wrap gap-2">
+              {RELEVANCE_OPTIONS.map((opt) => (
+                <Chip
+                  key={opt.value}
+                  label={opt.label}
+                  selected={(draft.relevanceFilter ?? "all") === opt.value}
+                  onPress={() =>
+                    patch({
+                      // "all" -> undefined para não contar como filtro ativo.
+                      relevanceFilter: opt.value === "all" ? undefined : opt.value,
                     })
                   }
                 />

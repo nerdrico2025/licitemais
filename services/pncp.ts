@@ -5,6 +5,7 @@ import type {
   SearchResult,
 } from "../types/opportunity";
 import { searchComprasnet } from "./comprasnet";
+import { scoreRelevance } from "./relevanceScorer";
 
 const PNCP_BASE = "https://pncp.gov.br/api/consulta";
 // Busca textual: o endpoint /consulta NÃO aceita palavra-chave (ver spec
@@ -271,12 +272,32 @@ function applyClientFilters(
 export async function searchOpportunities(
   params: SearchParams = {},
 ): Promise<SearchResult> {
+  // Keywords p/ scoring: as explícitas ou, como padrão, a própria busca.
+  const relevanceKeywords = params.relevanceKeywords?.length
+    ? params.relevanceKeywords
+    : params.keyword?.trim()
+      ? [params.keyword.trim()]
+      : [];
+  // Anota relevanceScore em cada item (no-op se não houver keywords).
+  const withScore = (r: SearchResult): SearchResult =>
+    relevanceKeywords.length === 0
+      ? r
+      : {
+          ...r,
+          data: r.data.map((o) => ({
+            ...o,
+            relevanceScore: scoreRelevance(o, relevanceKeywords),
+          })),
+        };
+
   // Busca por termo usa a API de texto livre do PNCP (/api/search), pois o
   // endpoint /consulta não aceita palavra-chave.
   if (params.keyword?.trim()) {
     try {
       const byKeyword = await searchByKeyword(params.keyword.trim(), params);
-      if (byKeyword.data.length > 0 || byKeyword.total > 0) return byKeyword;
+      if (byKeyword.data.length > 0 || byKeyword.total > 0) {
+        return withScore(byKeyword);
+      }
     } catch {
       // cai para o fluxo padrão (publicacao + fallback) abaixo.
     }
@@ -310,10 +331,10 @@ export async function searchOpportunities(
     // 0 resultados na fonte primária -> tenta o fallback do Compras.gov.
     if (items.length === 0) {
       const fallback = await searchComprasnet(params).catch(() => null);
-      if (fallback && fallback.data.length > 0) return fallback;
+      if (fallback && fallback.data.length > 0) return withScore(fallback);
     }
 
-    return {
+    return withScore({
       data: applyClientFilters(items, params),
       total:
         typeof json?.totalRegistros === "number"
@@ -321,11 +342,11 @@ export async function searchOpportunities(
           : items.length,
       page,
       hasMore: (json?.paginasRestantes ?? 0) > 0,
-    };
+    });
   } catch {
     // PNCP indisponível -> tenta fallback; se também falhar, erro amigável.
     const fallback = await searchComprasnet(params).catch(() => null);
-    if (fallback) return fallback;
+    if (fallback) return withScore(fallback);
     throw new Error(API_OFFLINE_MESSAGE);
   }
 }
