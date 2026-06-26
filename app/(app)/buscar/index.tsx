@@ -17,11 +17,27 @@ import { Button } from "../../../components/ui/Button";
 import { useOpportunities } from "../../../hooks/useOpportunities";
 import type { OpportunityFilters } from "../../../types/opportunity";
 
+// Sugestões de busca (RF UX): termo enviado à API pode diferir do rótulo
+// curto exibido no chip (ex.: "TI" -> "tecnologia da informação").
+const SEARCH_SUGGESTIONS: { label: string; term: string }[] = [
+  { label: "Obras", term: "obras" },
+  { label: "TI", term: "tecnologia da informação" },
+  { label: "Limpeza", term: "limpeza" },
+  { label: "Segurança", term: "segurança" },
+  { label: "Saúde", term: "saúde" },
+  { label: "Transporte", term: "transporte" },
+];
+
 export default function Buscar() {
   const [keyword, setKeyword] = useState("");
   const [submittedKeyword, setSubmittedKeyword] = useState("");
   const [filters, setFilters] = useState<OpportunityFilters>({});
   const [sheetOpen, setSheetOpen] = useState(false);
+
+  const submitSearch = (term: string) => {
+    setKeyword(term);
+    setSubmittedKeyword(term.trim());
+  };
 
   const params = useMemo(
     () => ({ ...filters, keyword: submittedKeyword || undefined }),
@@ -95,6 +111,22 @@ export default function Buscar() {
             ) : null}
           </Pressable>
         </View>
+
+        {/* Sugestões de busca: atalho para termos comuns (visível sem termo). */}
+        {!submittedKeyword ? (
+          <View className="flex-row flex-wrap gap-2">
+            {SEARCH_SUGGESTIONS.map(({ label, term }) => (
+              <Pressable
+                key={term}
+                accessibilityRole="button"
+                onPress={() => submitSearch(term)}
+                className="rounded-full border border-slate-200 bg-slate-100 px-3 py-1.5 active:bg-slate-200"
+              >
+                <Text className="text-sm font-medium text-slate-700">{label}</Text>
+              </Pressable>
+            ))}
+          </View>
+        ) : null}
       </View>
 
       {/* Conteúdo */}
@@ -123,6 +155,15 @@ export default function Buscar() {
           renderItem={({ item }) => <BidCard opportunity={item} />}
           contentContainerClassName="gap-3 px-4 py-4"
           showsVerticalScrollIndicator={false}
+          ListHeaderComponent={
+            items.length > 0 ? (
+              <Text className="pb-1 text-sm font-semibold text-slate-500">
+                {submittedKeyword
+                  ? `Resultados para "${submittedKeyword}"`
+                  : "Licitações recentes"}
+              </Text>
+            ) : null
+          }
           onEndReachedThreshold={0.5}
           onEndReached={() => {
             if (hasNextPage && !isFetchingNextPage) fetchNextPage();
