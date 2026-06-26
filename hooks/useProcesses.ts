@@ -1,53 +1,73 @@
 import { useEffect } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+
 import { supabase } from "../services/supabase";
 import { useAuthStore } from "../stores/authStore";
-import type { UserProcessWithOpportunity } from "../types/process";
+import type { UserProcess } from "../types/process";
 
-const PROCESSES_QUERY_KEY = ["processes"] as const;
+/** Chave da lista de processos do usuário. */
+export const PROCESSES_KEY = ["user_processes"] as const;
 
-async function fetchProcesses(userId: string): Promise<UserProcessWithOpportunity[]> {
+// Payload enxuto p/ 3G (§8.1): só as colunas usadas na lista/Kanban — sem
+// raw_text, notes, etc. ai_summary/checklist_state alimentam o progresso (X/Y).
+const SELECT =
+  "id, status, ai_summary, checklist_state, created_at, opportunity_id, " +
+  "bidding_opportunities ( id, title, agency, opening_date )";
+
+async function fetchProcesses(): Promise<UserProcess[]> {
+  // RLS restringe a auth.uid(); ordenamos do mais recente para o mais antigo.
   const { data, error } = await supabase
     .from("user_processes")
-    .select(
-      "*, opportunity:bidding_opportunities(id, external_id, source, title, agency, opening_date, estimated_value)",
-    )
-    .eq("user_id", userId)
+    .select(SELECT)
     .order("created_at", { ascending: false });
 
-  if (error) {
-    throw new Error("Não foi possível carregar seus processos. Tente novamente.");
-  }
-
-  return (data ?? []) as unknown as UserProcessWithOpportunity[];
+  if (error) throw error;
+  return (data ?? []) as unknown as UserProcess[];
 }
 
+/**
+ * Lista os processos do usuário (RF08). React Query para o fetch + cache e
+ * Supabase Realtime para manter a lista viva: qualquer INSERT/UPDATE em
+ * user_processes do usuário invalida a query (substitui SSE/polling).
+ */
 export function useProcesses() {
-  const userId = useAuthStore((state) => state.user?.id);
   const queryClient = useQueryClient();
+  const userId = useAuthStore((s) => s.user?.id);
 
   const query = useQuery({
-    queryKey: PROCESSES_QUERY_KEY,
-    queryFn: () => fetchProcesses(userId!),
+    queryKey: PROCESSES_KEY,
+    queryFn: fetchProcesses,
     enabled: !!userId,
   });
 
   useEffect(() => {
     if (!userId) return;
 
+    const invalidate = () => {
+      queryClient.invalidateQueries({ queryKey: PROCESSES_KEY });
+    };
+
     const channel = supabase
       .channel(`user_processes:list:${userId}`)
       .on(
         "postgres_changes",
         {
-          event: "*",
+          event: "INSERT",
           schema: "public",
           table: "user_processes",
           filter: `user_id=eq.${userId}`,
         },
-        () => {
-          queryClient.invalidateQueries({ queryKey: PROCESSES_QUERY_KEY });
+        invalidate,
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "UPDATE",
+          schema: "public",
+          table: "user_processes",
+          filter: `user_id=eq.${userId}`,
         },
+        invalidate,
       )
       .subscribe();
 

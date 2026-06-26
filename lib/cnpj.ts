@@ -1,42 +1,39 @@
 /** Remove tudo que não for dígito. */
-export function unformatCnpj(value: string): string {
+export function onlyDigits(value: string): string {
   return value.replace(/\D/g, "");
 }
 
-/** Aplica a máscara 00.000.000/0000-00 enquanto o usuário digita. */
-export function formatCnpj(value: string): string {
-  const digits = unformatCnpj(value).slice(0, 14);
+/** Valida um CNPJ pelos dígitos verificadores. Aceita com ou sem máscara. */
+export function isValidCNPJ(value: string): boolean {
+  const cnpj = onlyDigits(value);
+  if (cnpj.length !== 14) return false;
+  if (/^(\d)\1{13}$/.test(cnpj)) return false; // todos os dígitos iguais
 
-  return digits
-    .replace(/^(\d{2})(\d)/, "$1.$2")
-    .replace(/^(\d{2})\.(\d{3})(\d)/, "$1.$2.$3")
-    .replace(/\.(\d{3})(\d)/, ".$1/$2")
-    .replace(/(\d{4})(\d)/, "$1-$2");
+  const digit = (base: string): number => {
+    const weights =
+      base.length === 12
+        ? [5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2]
+        : [6, 5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2];
+    const sum = base
+      .split("")
+      .reduce((acc, n, i) => acc + Number(n) * weights[i], 0);
+    const rest = sum % 11;
+    return rest < 2 ? 0 : 11 - rest;
+  };
+
+  const d1 = digit(cnpj.slice(0, 12));
+  const d2 = digit(cnpj.slice(0, 12) + d1);
+  return cnpj.endsWith(`${d1}${d2}`);
 }
 
-function calcCheckDigit(digits: string, weights: number[]): number {
-  const sum = weights.reduce(
-    (total, weight, index) => total + Number(digits[index]) * weight,
-    0,
-  );
-  const remainder = sum % 11;
-  return remainder < 2 ? 0 : 11 - remainder;
-}
-
-/** Valida um CNPJ (algoritmo de dígitos verificadores). */
-export function isValidCnpj(value: string): boolean {
-  const digits = unformatCnpj(value);
-  if (digits.length !== 14) return false;
-  if (/^(\d)\1{13}$/.test(digits)) return false;
-
-  const firstCheck = calcCheckDigit(digits, [5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2]);
-  if (firstCheck !== Number(digits[12])) return false;
-
-  const secondCheck = calcCheckDigit(
-    digits,
-    [6, 5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2],
-  );
-  if (secondCheck !== Number(digits[13])) return false;
-
-  return true;
+/** Aplica a máscara 00.000.000/0000-00 de forma progressiva. */
+export function formatCNPJ(value: string): string {
+  const c = onlyDigits(value).slice(0, 14);
+  if (c.length > 12) {
+    return `${c.slice(0, 2)}.${c.slice(2, 5)}.${c.slice(5, 8)}/${c.slice(8, 12)}-${c.slice(12)}`;
+  }
+  if (c.length > 8) return `${c.slice(0, 2)}.${c.slice(2, 5)}.${c.slice(5, 8)}/${c.slice(8)}`;
+  if (c.length > 5) return `${c.slice(0, 2)}.${c.slice(2, 5)}.${c.slice(5)}`;
+  if (c.length > 2) return `${c.slice(0, 2)}.${c.slice(2)}`;
+  return c;
 }

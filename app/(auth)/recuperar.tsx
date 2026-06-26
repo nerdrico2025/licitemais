@@ -1,64 +1,73 @@
 import { useState } from "react";
-import { Text, View } from "react-native";
-import { useRouter } from "expo-router";
-import { SafeAreaView } from "react-native-safe-area-context";
 import { Controller, useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { resetPassword } from "../../services/auth";
-import { Button } from "../../components/ui/Button";
-import { Input } from "../../components/ui/Input";
-import { ErrorText } from "../../components/ui/ErrorText";
+import { router } from "expo-router";
+import {
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
+  Text,
+  View,
+} from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 
-const recuperarSchema = z.object({
-  email: z.string().email("Informe um e-mail válido."),
+import { Button } from "../../components/ui/Button";
+import { ErrorText } from "../../components/ui/ErrorText";
+import { Input } from "../../components/ui/Input";
+import { resetPassword } from "../../services/auth";
+
+const schema = z.object({
+  email: z.string().trim().email("E-mail inválido."),
 });
 
-type RecuperarForm = z.infer<typeof recuperarSchema>;
+type FormData = z.infer<typeof schema>;
 
-export default function RecuperarScreen() {
-  const router = useRouter();
-  const [submitError, setSubmitError] = useState<string | undefined>();
-  const [sent, setSent] = useState(false);
+export default function Recuperar() {
+  const [formError, setFormError] = useState("");
+  const [sentTo, setSentTo] = useState<string | null>(null);
+
   const {
     control,
     handleSubmit,
     formState: { errors, isSubmitting },
-  } = useForm<RecuperarForm>({
-    resolver: zodResolver(recuperarSchema),
+  } = useForm<FormData>({
+    resolver: zodResolver(schema),
     defaultValues: { email: "" },
   });
 
-  async function onSubmit(values: RecuperarForm) {
-    setSubmitError(undefined);
+  const onSubmit = async (data: FormData) => {
+    setFormError("");
     try {
-      await resetPassword(values.email);
-      setSent(true);
-    } catch (error) {
-      setSubmitError(
-        error instanceof Error ? error.message : "Algo deu errado. Tente novamente.",
+      await resetPassword(data.email);
+      setSentTo(data.email);
+    } catch (e) {
+      setFormError(
+        e instanceof Error
+          ? e.message
+          : "Não foi possível enviar o e-mail de recuperação.",
       );
     }
-  }
+  };
 
-  if (sent) {
+  if (sentTo) {
     return (
       <SafeAreaView className="flex-1 bg-white">
-        <View className="flex-1 justify-center px-6">
-          <Text className="text-6xl">✉️</Text>
-          <Text className="mt-4 text-3xl font-bold text-gray-900">
-            E-mail enviado
-          </Text>
-          <Text className="mt-3 text-base text-gray-600">
-            Se houver uma conta com esse e-mail, você receberá um link para
-            redefinir sua senha. Verifique também a caixa de spam.
-          </Text>
-          <View className="mt-8">
-            <Button
-              title="Voltar para o login"
-              onPress={() => router.push("/(auth)/login")}
-            />
+        <View className="flex-1 justify-center gap-6 px-6 py-10">
+          <View className="gap-3">
+            <Text className="text-3xl font-bold text-slate-900">
+              Verifique seu e-mail
+            </Text>
+            <Text className="text-base leading-relaxed text-slate-600">
+              Se houver uma conta para
+              <Text className="font-semibold text-slate-800"> {sentTo}</Text>,
+              enviamos um link para redefinir sua senha.
+            </Text>
           </View>
+          <Button
+            title="Voltar para o login"
+            onPress={() => router.replace("/(auth)/login")}
+          />
         </View>
       </SafeAreaView>
     );
@@ -66,47 +75,57 @@ export default function RecuperarScreen() {
 
   return (
     <SafeAreaView className="flex-1 bg-white">
-      <View className="flex-1 justify-center px-6">
-        <Text className="text-3xl font-bold text-gray-900">
-          Recuperar senha
-        </Text>
-        <Text className="mb-8 mt-2 text-gray-500">
-          Informe seu e-mail e enviaremos um link para redefinir sua senha.
-        </Text>
+      <KeyboardAvoidingView
+        className="flex-1"
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
+      >
+        <ScrollView
+          contentContainerClassName="flex-grow justify-center gap-5 px-6 py-10"
+          keyboardShouldPersistTaps="handled"
+        >
+          <View className="gap-1">
+            <Text className="text-3xl font-bold text-slate-900">
+              Recuperar senha
+            </Text>
+            <Text className="text-base text-slate-500">
+              Informe seu e-mail e enviaremos um link para redefinir a senha.
+            </Text>
+          </View>
 
-        <Controller
-          control={control}
-          name="email"
-          render={({ field: { onChange, onBlur, value } }) => (
-            <Input
-              label="E-mail"
-              placeholder="voce@empresa.com.br"
-              autoCapitalize="none"
-              autoComplete="email"
-              keyboardType="email-address"
-              value={value}
-              onChangeText={onChange}
-              onBlur={onBlur}
-              error={errors.email?.message}
+          <Controller
+            control={control}
+            name="email"
+            render={({ field: { onChange, onBlur, value } }) => (
+              <Input
+                label="E-mail"
+                placeholder="voce@email.com"
+                keyboardType="email-address"
+                autoCapitalize="none"
+                autoComplete="email"
+                value={value}
+                onChangeText={onChange}
+                onBlur={onBlur}
+                error={errors.email?.message}
+              />
+            )}
+          />
+
+          <ErrorText>{formError}</ErrorText>
+
+          <View className="gap-4">
+            <Button
+              title="Enviar link"
+              loading={isSubmitting}
+              onPress={handleSubmit(onSubmit)}
             />
-          )}
-        />
-
-        <ErrorText message={submitError} />
-
-        <View className="mt-6 gap-3">
-          <Button
-            title="Enviar link"
-            loading={isSubmitting}
-            onPress={handleSubmit(onSubmit)}
-          />
-          <Button
-            title="Voltar"
-            variant="secondary"
-            onPress={() => router.back()}
-          />
-        </View>
-      </View>
+            <Button
+              title="Voltar"
+              variant="ghost"
+              onPress={() => router.back()}
+            />
+          </View>
+        </ScrollView>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }

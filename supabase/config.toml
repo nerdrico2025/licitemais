@@ -371,10 +371,6 @@ authorization_url_path = "/oauth/consent"
 # Allow dynamic client registration
 allow_dynamic_registration = false
 
-[functions.ping]
-# Sem JWT: permite o ping do GitHub Action sem expor nenhuma credencial.
-verify_jwt = false
-
 [edge_runtime]
 enabled = true
 # Supported request policies: `oneshot`, `per_worker`.
@@ -388,6 +384,10 @@ deno_version = 2
 
 # [edge_runtime.secrets]
 # secret_key = "env(SECRET_VALUE)"
+
+# Função de keep-alive: acessível sem JWT (chamada pelo GitHub Action).
+[functions.ping]
+verify_jwt = false
 
 [analytics]
 enabled = true

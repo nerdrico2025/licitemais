@@ -1,139 +1,330 @@
+import { Ionicons } from "@expo/vector-icons";
+import { router, useLocalSearchParams } from "expo-router";
 import { useEffect, useRef, useState } from "react";
 import {
+  ActivityIndicator,
   Pressable,
   ScrollView,
   Text,
   TextInput,
   View,
 } from "react-native";
-import { useLocalSearchParams, useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { Ionicons } from "@expo/vector-icons";
-import { useQueryClient } from "@tanstack/react-query";
-import { processQueryKey, useProcess } from "../../../hooks/useProcess";
+
+import { ProcessStatusBadge } from "../../../components/ProcessStatusBadge";
+import { useProcess } from "../../../hooks/useProcess";
 import { useUpdateProcess } from "../../../hooks/useUpdateProcess";
+import { formatDateTime } from "../../../lib/format";
+import { toastError } from "../../../lib/toast";
 import { supabase } from "../../../services/supabase";
-import { showError } from "../../../lib/toast";
-import { formatDate, formatDateTime } from "../../../lib/format";
-import {
-  CHECKLIST_TYPE_BADGE_CLASSES,
-  CHECKLIST_TYPE_LABELS,
-  STATUS_BADGE_CLASSES,
-  STATUS_LABELS,
-} from "../../../lib/processStatus";
-import type { UserProcessWithOpportunity } from "../../../types/process";
-import { Skeleton } from "../../../components/ui/Skeleton";
-import { Button } from "../../../components/ui/Button";
+import type { AiSummary, ChecklistState, UserProcess } from "../../../types/process";
 
-type TabKey = "resumo" | "notas";
+const CHECKLIST_DEBOUNCE_MS = 500;
+const NOTES_DEBOUNCE_MS = 800;
 
-const CHECKLIST_SAVE_DELAY = 800;
-const NOTES_SAVE_DELAY = 1000;
+type Tab = "resumo" | "notas";
 
-function friendlyDate(value: string | undefined): string {
-  if (!value) return "Não informado";
-  return formatDateTime(value) ?? formatDate(value) ?? value;
-}
-
-function ResumoSkeleton() {
+function Header() {
   return (
-    <View className="px-4 pt-4">
-      <Skeleton className="h-4 w-40" />
-      <Skeleton className="mt-3 h-20 w-full" />
-      <Skeleton className="mt-6 h-4 w-32" />
-      <Skeleton className="mt-3 h-12 w-full" />
-      <Skeleton className="mt-2 h-12 w-full" />
-      <Skeleton className="mt-6 h-4 w-32" />
-      <Skeleton className="mt-3 h-10 w-full" />
-      <Skeleton className="mt-2 h-10 w-full" />
-      <Skeleton className="mt-2 h-10 w-full" />
+    <View className="flex-row items-center gap-3 border-b border-slate-100 px-4 py-3">
+      <Pressable onPress={() => router.back()} hitSlop={8} accessibilityRole="button">
+        <Ionicons name="arrow-back" size={24} color="#0f172a" />
+      </Pressable>
+      <Text className="text-lg font-semibold text-slate-900">Processo</Text>
     </View>
   );
 }
 
-export default function ProcessoScreen() {
-  const { id } = useLocalSearchParams<{ id: string }>();
-  const router = useRouter();
-  const queryClient = useQueryClient();
+function SectionTitle({ children }: { children: string }) {
+  return (
+    <Text className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+      {children}
+    </Text>
+  );
+}
 
-  const { data: process, isLoading, isError, error, refetch } = useProcess(id);
-  const updateProcess = useUpdateProcess();
+/** Skeleton exibido enquanto a IA processa o edital (status ANALYZING). */
+function SummarySkeleton() {
+  return (
+    <View className="gap-5">
+      <View className="flex-row items-center gap-3 rounded-2xl bg-blue-50 px-4 py-4">
+        <ActivityIndicator color="#2563eb" />
+        <Text className="flex-1 text-sm text-blue-800">
+          Analisando o edital com IA. Isso leva alguns instantes…
+        </Text>
+      </View>
+      <View className="gap-2">
+        <View className="h-3 w-24 rounded bg-slate-200" />
+        <View className="h-4 w-full rounded bg-slate-200" />
+        <View className="h-4 w-3/4 rounded bg-slate-200" />
+      </View>
+      <View className="flex-row gap-3">
+        <View className="h-16 flex-1 rounded-2xl bg-slate-100" />
+        <View className="h-16 flex-1 rounded-2xl bg-slate-100" />
+      </View>
+      <View className="gap-3">
+        {[0, 1, 2].map((i) => (
+          <View key={i} className="h-5 w-full rounded bg-slate-100" />
+        ))}
+      </View>
+    </View>
+  );
+}
 
-  const [activeTab, setActiveTab] = useState<TabKey>("resumo");
-  const [checklistState, setChecklistState] = useState<Record<string, boolean>>({});
-  const [notes, setNotes] = useState("");
-  const [retrying, setRetrying] = useState(false);
+function ChecklistRow({
+  item,
+  checked,
+  onToggle,
+}: {
+  item: AiSummary["documentsChecklist"][number];
+  checked: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <Pressable
+      onPress={onToggle}
+      accessibilityRole="checkbox"
+      accessibilityState={{ checked }}
+      className="flex-row items-center gap-3 border-b border-slate-100 py-3"
+    >
+      <Ionicons
+        name={checked ? "checkbox" : "square-outline"}
+        size={22}
+        color={checked ? "#2563eb" : "#94a3b8"}
+      />
+      <View className="flex-1 gap-0.5">
+        <Text className="text-sm text-slate-800">{item.item}</Text>
+        <Text className="text-xs text-slate-400">{item.type}</Text>
+      </View>
+    </Pressable>
+  );
+}
 
-  const checklistTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const notesTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+// ---------------------------------------------------------------------------
+// Aba: Resumo IA (RF11 / RF12 / RF16)
+// ---------------------------------------------------------------------------
 
+function ResumoTab({ process }: { process: UserProcess }) {
+  const update = useUpdateProcess();
+  const summary = process.ai_summary;
+
+  // Estado local do checklist com persistência debounced (RF16).
+  const [checklist, setChecklist] = useState<ChecklistState>(process.checklist_state ?? {});
+  const pendingChecklist = useRef(false);
+  const checklistTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Guarda o último payload para conseguir dar flush no unmount sem perder edições.
+  const flushChecklist = useRef<(() => void) | null>(null);
+
+  // Reconcilia com o servidor (Realtime) quando não há edição local pendente.
   useEffect(() => {
-    if (process) {
-      setChecklistState(process.checklist_state ?? {});
-      setNotes(process.notes ?? "");
-    }
-  }, [process?.id, process?.checklist_state, process?.notes]);
+    if (!pendingChecklist.current) setChecklist(process.checklist_state ?? {});
+  }, [process.checklist_state]);
 
+  // No unmount (ex.: troca de aba), dá flush de qualquer save pendente.
   useEffect(() => {
     return () => {
-      if (checklistTimeout.current) clearTimeout(checklistTimeout.current);
-      if (notesTimeout.current) clearTimeout(notesTimeout.current);
+      if (checklistTimer.current) {
+        clearTimeout(checklistTimer.current);
+        flushChecklist.current?.();
+      }
     };
   }, []);
 
-  function toggleChecklistItem(itemId: string) {
-    if (!process) return;
+  const toggleDoc = (docId: string) => {
+    setChecklist((prev) => {
+      const next = { ...prev, [docId]: !prev[docId] };
+      pendingChecklist.current = true;
+      const persist = () =>
+        update.mutate(
+          { id: process.id, checklist_state: next },
+          { onSettled: () => (pendingChecklist.current = false) },
+        );
+      flushChecklist.current = persist;
+      if (checklistTimer.current) clearTimeout(checklistTimer.current);
+      checklistTimer.current = setTimeout(persist, CHECKLIST_DEBOUNCE_MS);
+      return next;
+    });
+  };
 
-    const next = { ...checklistState, [itemId]: !checklistState[itemId] };
-    setChecklistState(next);
-
-    if (checklistTimeout.current) clearTimeout(checklistTimeout.current);
-    checklistTimeout.current = setTimeout(() => {
-      updateProcess.mutate({ id: process.id, checklist_state: next });
-    }, CHECKLIST_SAVE_DELAY);
-  }
-
-  function handleNotesChange(value: string) {
-    if (!process) return;
-
-    setNotes(value);
-
-    if (notesTimeout.current) clearTimeout(notesTimeout.current);
-    notesTimeout.current = setTimeout(() => {
-      updateProcess.mutate({ id: process.id, notes: value });
-    }, NOTES_SAVE_DELAY);
-  }
-
-  async function handleRetry() {
-    if (!process) return;
-
-    setRetrying(true);
-
-    queryClient.setQueryData<UserProcessWithOpportunity | undefined>(
-      processQueryKey(process.id),
-      (current) => (current ? { ...current, status: "ANALYZING" } : current),
-    );
-
+  const retryAnalysis = async () => {
     try {
-      const { error: invokeError } = await supabase.functions.invoke("analyze-edital", {
-        body: { processId: process.id },
-      });
-
-      if (invokeError) {
-        throw new Error("Não foi possível reanalisar o edital. Tente novamente.");
-      }
-    } catch (err) {
-      showError(err instanceof Error ? err.message : "Não foi possível reanalisar o edital.");
-      queryClient.invalidateQueries({ queryKey: processQueryKey(process.id) });
-    } finally {
-      setRetrying(false);
+      await supabase.from("user_processes").update({ status: "ANALYZING" }).eq("id", process.id);
+      await supabase.functions.invoke("analyze-edital", { body: { processId: process.id } });
+    } catch {
+      toastError("Não foi possível reiniciar a análise. Tente novamente.");
     }
+  };
+
+  // Enquanto analisa: skeleton (RF11).
+  if (process.status === "ANALYZING") return <SummarySkeleton />;
+
+  // Falha persistente: mensagem + retry (RF12).
+  if (process.status === "ERROR" && !summary) {
+    return (
+      <View className="gap-3 rounded-2xl bg-red-50 px-4 py-5">
+        <View className="flex-row items-center gap-2">
+          <Ionicons name="alert-circle-outline" size={20} color="#b91c1c" />
+          <Text className="flex-1 text-sm text-red-800">
+            Não foi possível analisar este edital automaticamente.
+          </Text>
+        </View>
+        <Pressable
+          onPress={retryAnalysis}
+          accessibilityRole="button"
+          className="self-start rounded-xl bg-red-600 px-4 py-2.5"
+        >
+          <Text className="text-sm font-semibold text-white">Tentar novamente</Text>
+        </Pressable>
+      </View>
+    );
   }
+
+  // Ainda sem resumo (ex.: status SAVED antes de analisar).
+  if (!summary) {
+    return (
+      <View className="items-center gap-2 py-10">
+        <Ionicons name="sparkles-outline" size={32} color="#cbd5e1" />
+        <Text className="text-center text-sm text-slate-400">
+          A análise por IA aparecerá aqui assim que ficar pronta.
+        </Text>
+      </View>
+    );
+  }
+
+  return (
+    <View className="gap-5">
+      <View className="gap-1.5">
+        <SectionTitle>Objeto da licitação</SectionTitle>
+        <Text className="text-sm leading-6 text-slate-800">{summary.objectSimplified}</Text>
+      </View>
+
+      <View className="flex-row gap-3">
+        <View className="flex-1 gap-1 rounded-2xl bg-slate-50 px-4 py-3">
+          <SectionTitle>Entrega da proposta</SectionTitle>
+          <Text className="text-sm font-semibold text-slate-900">
+            {formatDateTime(summary.importantDates.proposalDelivery)}
+          </Text>
+        </View>
+        <View className="flex-1 gap-1 rounded-2xl bg-slate-50 px-4 py-3">
+          <SectionTitle>Início do certame</SectionTitle>
+          <Text className="text-sm font-semibold text-slate-900">
+            {formatDateTime(summary.importantDates.auctionStart)}
+          </Text>
+        </View>
+      </View>
+
+      {summary.requirements.length > 0 ? (
+        <View className="gap-2">
+          <SectionTitle>Requisitos impeditivos</SectionTitle>
+          {summary.requirements.map((req, i) => (
+            <View key={i} className="flex-row gap-2">
+              <Ionicons name="warning-outline" size={16} color="#d97706" style={{ marginTop: 2 }} />
+              <Text className="flex-1 text-sm leading-6 text-slate-700">{req}</Text>
+            </View>
+          ))}
+        </View>
+      ) : null}
+
+      {summary.documentsChecklist.length > 0 ? (
+        <View className="gap-1">
+          <SectionTitle>Checklist de documentos</SectionTitle>
+          {summary.documentsChecklist.map((doc) => (
+            <ChecklistRow
+              key={doc.id}
+              item={doc}
+              checked={!!checklist[doc.id]}
+              onToggle={() => toggleDoc(doc.id)}
+            />
+          ))}
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Aba: Notas (RF17)
+// ---------------------------------------------------------------------------
+
+function NotasTab({ process }: { process: UserProcess }) {
+  const update = useUpdateProcess();
+  const [notes, setNotes] = useState(process.notes ?? "");
+  const pendingNotes = useRef(false);
+  const notesTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const flushNotes = useRef<(() => void) | null>(null);
+
+  useEffect(() => {
+    if (!pendingNotes.current) setNotes(process.notes ?? "");
+  }, [process.notes]);
+
+  // No unmount (ex.: troca de aba / sair da tela), salva o que estiver pendente.
+  useEffect(() => {
+    return () => {
+      if (notesTimer.current) {
+        clearTimeout(notesTimer.current);
+        flushNotes.current?.();
+      }
+    };
+  }, []);
+
+  const onChange = (text: string) => {
+    setNotes(text);
+    pendingNotes.current = true;
+    const persist = () =>
+      update.mutate(
+        { id: process.id, notes: text },
+        { onSettled: () => (pendingNotes.current = false) },
+      );
+    flushNotes.current = persist;
+    if (notesTimer.current) clearTimeout(notesTimer.current);
+    notesTimer.current = setTimeout(persist, NOTES_DEBOUNCE_MS);
+  };
+
+  return (
+    <View className="gap-2">
+      <View className="flex-row items-center justify-between">
+        <SectionTitle>Suas anotações</SectionTitle>
+        {update.isPending ? <Text className="text-xs text-slate-400">Salvando…</Text> : null}
+      </View>
+      <TextInput
+        value={notes}
+        onChangeText={onChange}
+        placeholder="Escreva observações sobre este processo…"
+        placeholderTextColor="#94a3b8"
+        multiline
+        className="min-h-40 rounded-2xl border border-slate-200 px-4 py-3 text-sm text-slate-800"
+        textAlignVertical="top"
+      />
+    </View>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Tela
+// ---------------------------------------------------------------------------
+
+const TABS: { key: Tab; label: string }[] = [
+  { key: "resumo", label: "Resumo IA" },
+  { key: "notas", label: "Notas" },
+];
+
+export default function Processo() {
+  const { id } = useLocalSearchParams<{ id: string }>();
+  const { data: process, isLoading, isError, refetch } = useProcess(id);
+  const [tab, setTab] = useState<Tab>("resumo");
 
   if (isLoading) {
     return (
       <SafeAreaView className="flex-1 bg-white">
-        <ResumoSkeleton />
+        <Header />
+        <View className="gap-4 px-4 pt-4">
+          <View className="h-5 w-24 rounded-full bg-slate-200" />
+          <View className="h-6 w-full rounded bg-slate-200" />
+          <View className="h-4 w-1/2 rounded bg-slate-100" />
+          <View className="mt-2 h-4 w-28 rounded bg-slate-100" />
+          <View className="h-16 w-full rounded-2xl bg-slate-100" />
+          <View className="h-16 w-full rounded-2xl bg-slate-100" />
+        </View>
       </SafeAreaView>
     );
   }
@@ -141,201 +332,66 @@ export default function ProcessoScreen() {
   if (isError || !process) {
     return (
       <SafeAreaView className="flex-1 bg-white">
-        <View className="flex-1 items-center justify-center px-8">
-          <Ionicons name="alert-circle-outline" size={48} color="#9ca3af" />
-          <Text className="mt-3 text-center text-base text-gray-600">
-            {error instanceof Error
-              ? error.message
-              : "Não foi possível carregar este processo."}
+        <Header />
+        <View className="flex-1 items-center justify-center gap-3 px-8">
+          <Ionicons name="document-outline" size={40} color="#94a3b8" />
+          <Text className="text-center text-base text-slate-600">
+            Não foi possível carregar este processo.
           </Text>
-          <View className="mt-5 w-40">
-            <Button title="Tentar novamente" onPress={() => refetch()} />
-          </View>
+          <Pressable
+            onPress={() => refetch()}
+            accessibilityRole="button"
+            className="rounded-xl bg-slate-900 px-5 py-3"
+          >
+            <Text className="text-sm font-semibold text-white">Tentar novamente</Text>
+          </Pressable>
         </View>
       </SafeAreaView>
     );
   }
 
-  const opportunity = process.opportunity;
-  const summary = process.ai_summary;
+  const opp = process.bidding_opportunities;
 
   return (
     <SafeAreaView className="flex-1 bg-white">
-      <View className="flex-row items-center gap-3 border-b border-gray-100 px-4 py-3">
-        <Pressable hitSlop={8} onPress={() => router.back()}>
-          <Ionicons name="arrow-back" size={24} color="#111827" />
-        </Pressable>
-        <Text className="flex-1 text-lg font-bold text-gray-900" numberOfLines={1}>
-          {opportunity?.title ?? "Meu processo"}
+      <Header />
+
+      {/* Título + status */}
+      <View className="gap-2 px-4 pb-3 pt-4">
+        <ProcessStatusBadge status={process.status} />
+        <Text className="text-xl font-bold leading-7 text-slate-900">
+          {opp?.title ?? "Licitação"}
         </Text>
+        {opp?.agency ? <Text className="text-sm text-slate-500">{opp.agency}</Text> : null}
       </View>
 
-      <View className="flex-row items-center gap-2 px-4 pt-3">
-        <View className={`self-start rounded-full px-2.5 py-0.5 ${STATUS_BADGE_CLASSES[process.status]}`}>
-          <Text className="text-xs font-semibold">{STATUS_LABELS[process.status]}</Text>
-        </View>
-        {opportunity?.agency ? (
-          <Text className="flex-1 text-xs text-gray-500" numberOfLines={1}>
-            {opportunity.agency}
-          </Text>
-        ) : null}
+      {/* Abas */}
+      <View className="flex-row border-b border-slate-100 px-4">
+        {TABS.map((t) => {
+          const active = tab === t.key;
+          return (
+            <Pressable
+              key={t.key}
+              onPress={() => setTab(t.key)}
+              accessibilityRole="tab"
+              accessibilityState={{ selected: active }}
+              className={`mr-6 border-b-2 pb-2.5 pt-1 ${
+                active ? "border-blue-600" : "border-transparent"
+              }`}
+            >
+              <Text
+                className={`text-sm font-semibold ${active ? "text-blue-600" : "text-slate-400"}`}
+              >
+                {t.label}
+              </Text>
+            </Pressable>
+          );
+        })}
       </View>
 
-      <View className="mt-3 flex-row border-b border-gray-100 px-4">
-        <Pressable
-          className={`mr-6 border-b-2 pb-2 ${activeTab === "resumo" ? "border-blue-600" : "border-transparent"}`}
-          onPress={() => setActiveTab("resumo")}
-        >
-          <Text
-            className={`text-sm font-semibold ${
-              activeTab === "resumo" ? "text-blue-600" : "text-gray-500"
-            }`}
-          >
-            Resumo IA
-          </Text>
-        </Pressable>
-        <Pressable
-          className={`border-b-2 pb-2 ${activeTab === "notas" ? "border-blue-600" : "border-transparent"}`}
-          onPress={() => setActiveTab("notas")}
-        >
-          <Text
-            className={`text-sm font-semibold ${
-              activeTab === "notas" ? "text-blue-600" : "text-gray-500"
-            }`}
-          >
-            Notas
-          </Text>
-        </Pressable>
-      </View>
-
-      {activeTab === "resumo" ? (
-        process.status === "ANALYZING" || retrying ? (
-          <ResumoSkeleton />
-        ) : process.status === "ERROR" ? (
-          <View className="flex-1 items-center justify-center px-8">
-            <Ionicons name="warning-outline" size={48} color="#ef4444" />
-            <Text className="mt-3 text-center text-base text-gray-700">
-              Não foi possível analisar este edital com a IA.
-            </Text>
-            <View className="mt-5 w-48">
-              <Button title="Tentar novamente" onPress={handleRetry} />
-            </View>
-          </View>
-        ) : !summary ? (
-          <View className="flex-1 items-center justify-center px-8">
-            <Ionicons name="document-text-outline" size={48} color="#9ca3af" />
-            <Text className="mt-3 text-center text-base text-gray-600">
-              Este processo ainda não tem um resumo gerado pela IA.
-            </Text>
-          </View>
-        ) : (
-          <ScrollView className="flex-1 px-4" contentContainerClassName="pb-32 pt-4">
-            <Text className="text-sm font-semibold uppercase text-gray-400">
-              Objeto simplificado
-            </Text>
-            <Text className="mt-2 text-base leading-6 text-gray-900">
-              {summary.objectSimplified}
-            </Text>
-
-            <Text className="mt-6 text-sm font-semibold uppercase text-gray-400">
-              Datas importantes
-            </Text>
-            <View className="mt-2 gap-2">
-              <View className="flex-row items-center gap-3 rounded-xl border border-gray-100 bg-gray-50 px-3 py-3">
-                <Ionicons name="document-text-outline" size={18} color="#6b7280" />
-                <View className="flex-1">
-                  <Text className="text-xs text-gray-400">Entrega da proposta</Text>
-                  <Text className="text-sm font-medium text-gray-900">
-                    {friendlyDate(summary.importantDates?.proposalDelivery)}
-                  </Text>
-                </View>
-              </View>
-              <View className="flex-row items-center gap-3 rounded-xl border border-gray-100 bg-gray-50 px-3 py-3">
-                <Ionicons name="hammer-outline" size={18} color="#6b7280" />
-                <View className="flex-1">
-                  <Text className="text-xs text-gray-400">Início da sessão pública</Text>
-                  <Text className="text-sm font-medium text-gray-900">
-                    {friendlyDate(summary.importantDates?.auctionStart)}
-                  </Text>
-                </View>
-              </View>
-            </View>
-
-            {summary.requirements?.length > 0 ? (
-              <>
-                <Text className="mt-6 text-sm font-semibold uppercase text-gray-400">
-                  Requisitos
-                </Text>
-                <View className="mt-2 gap-1.5">
-                  {summary.requirements.map((requirement, index) => (
-                    <View key={index} className="flex-row items-start gap-2">
-                      <Ionicons name="ellipse" size={6} color="#9ca3af" style={{ marginTop: 7 }} />
-                      <Text className="flex-1 text-sm leading-5 text-gray-700">
-                        {requirement}
-                      </Text>
-                    </View>
-                  ))}
-                </View>
-              </>
-            ) : null}
-
-            {summary.documentsChecklist?.length > 0 ? (
-              <>
-                <Text className="mt-6 text-sm font-semibold uppercase text-gray-400">
-                  Checklist de documentos
-                </Text>
-                <View className="mt-2 gap-2">
-                  {summary.documentsChecklist.map((item) => {
-                    const checked = !!checklistState[item.id];
-                    return (
-                      <Pressable
-                        key={item.id}
-                        className="flex-row items-start gap-3 rounded-xl border border-gray-100 bg-gray-50 px-3 py-3 active:bg-gray-100"
-                        onPress={() => toggleChecklistItem(item.id)}
-                      >
-                        <Ionicons
-                          name={checked ? "checkbox" : "square-outline"}
-                          size={20}
-                          color={checked ? "#2563eb" : "#9ca3af"}
-                        />
-                        <View className="flex-1">
-                          <Text
-                            className={`text-sm ${checked ? "text-gray-400 line-through" : "text-gray-900"}`}
-                          >
-                            {item.item}
-                          </Text>
-                          <View
-                            className={`mt-1.5 self-start rounded-full px-2 py-0.5 ${CHECKLIST_TYPE_BADGE_CLASSES[item.type] ?? "bg-gray-100 text-gray-600"}`}
-                          >
-                            <Text className="text-xs font-semibold">
-                              {CHECKLIST_TYPE_LABELS[item.type] ?? item.type}
-                            </Text>
-                          </View>
-                        </View>
-                      </Pressable>
-                    );
-                  })}
-                </View>
-              </>
-            ) : null}
-          </ScrollView>
-        )
-      ) : (
-        <View className="flex-1 px-4 pt-4">
-          <Text className="text-sm font-semibold uppercase text-gray-400">
-            Notas
-          </Text>
-          <TextInput
-            className="mt-2 flex-1 rounded-xl border border-gray-200 bg-gray-50 p-3 text-base text-gray-900"
-            placeholder="Anote observações sobre este processo..."
-            placeholderTextColor="#9ca3af"
-            multiline
-            textAlignVertical="top"
-            value={notes}
-            onChangeText={handleNotesChange}
-          />
-        </View>
-      )}
+      <ScrollView contentContainerClassName="px-4 pb-16 pt-4" showsVerticalScrollIndicator={false}>
+        {tab === "resumo" ? <ResumoTab process={process} /> : <NotasTab process={process} />}
+      </ScrollView>
     </SafeAreaView>
   );
 }

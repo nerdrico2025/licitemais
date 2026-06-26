@@ -1,51 +1,71 @@
 export type OpportunitySource = "PNCP" | "COMPRASNET";
 
-export interface BiddingOpportunity {
+/**
+ * Tema da licitação derivado por IA (Edge Function classify-opportunities).
+ * O PNCP não fornece esse campo; ele é inferido a partir do objeto. Os rótulos
+ * legíveis e a lista canônica ficam em lib/categories.ts.
+ */
+export type OpportunityCategory =
+  | "tecnologia"
+  | "obras"
+  | "saude"
+  | "alimentacao"
+  | "limpeza"
+  | "transporte"
+  | "mobiliario"
+  | "escritorio"
+  | "comunicacao"
+  | "educacao"
+  | "servicos"
+  | "outros";
+
+/** Oportunidade de licitação normalizada (espelha public.bidding_opportunities). */
+export type BiddingOpportunity = {
   external_id: string;
   source: OpportunitySource;
   title: string;
   description: string | null;
   agency: string | null;
   uasg: string | null;
-  opening_date: string | null; // ISO 8601
-  proposal_deadline: string | null; // ISO 8601
+  /** ISO 8601. */
+  opening_date: string | null;
+  /** ISO 8601. */
+  proposal_deadline: string | null;
   bidding_mode: string | null;
   estimated_value: number | null;
   uf: string | null;
   source_url: string | null;
   raw_text: string | null;
-}
+  /** Tema inferido por IA; undefined = ainda não classificado. */
+  category?: OpportunityCategory | null;
+  /** ISO 8601 — quando o app buscou o registro. */
+  fetched_at: string;
+};
 
-export interface OpportunityFilters {
-  keyword?: string;
+/** Filtros selecionáveis no FilterSheet (RF03). */
+export type OpportunityFilters = {
   uf?: string;
+  /** codigoModalidadeContratacao do PNCP. */
   modalidade?: number;
+  /** Tema inferido por IA (refina os resultados carregados). */
+  categoria?: OpportunityCategory;
   valorMin?: number;
   valorMax?: number;
-  dataInicio?: string; // yyyy-MM-dd
-  dataFim?: string; // yyyy-MM-dd
-}
+  /** YYYY-MM-DD */
+  dataInicio?: string;
+  /** YYYY-MM-DD */
+  dataFim?: string;
+};
 
-export interface SearchOpportunitiesParams extends OpportunityFilters {
+export type SearchParams = OpportunityFilters & {
+  keyword?: string;
   page?: number;
   limit?: number;
-}
+};
 
-export interface SearchOpportunitiesResult {
+export type SearchResult = {
   data: BiddingOpportunity[];
   total: number;
   page: number;
   hasMore: boolean;
-}
-
-export const MODALIDADES: Record<number, string> = {
-  1: "Leilão Eletrônico",
-  3: "Concurso",
-  4: "Concorrência Eletrônica",
-  5: "Concorrência Presencial",
-  6: "Pregão Eletrônico",
-  7: "Pregão Presencial",
-  8: "Dispensa de Licitação",
-  9: "Inexigibilidade",
-  12: "Credenciamento",
 };

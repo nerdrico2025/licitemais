@@ -3,14 +3,16 @@
     "name": "Licite Mais",
     "slug": "licite-mais",
     "version": "1.0.0",
-    "scheme": "licitemais",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
+    "scheme": "licitemais",
     "userInterfaceStyle": "light",
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "br.com.nerdrico.licitemais"
     },
     "android": {
+      "package": "br.com.nerdrico.licitemais",
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/android-icon-foreground.png",
@@ -21,9 +23,15 @@
     },
     "web": {
       "favicon": "./assets/favicon.png",
-      "output": "single",
-      "bundler": "metro"
+      "bundler": "metro",
+      "output": "single"
     },
-    "plugins": ["expo-router", "expo-secure-store", "expo-web-browser"]
+    "plugins": [
+      "expo-router",
+      "expo-secure-store"
+    ],
+    "experiments": {
+      "typedRoutes": true
+    }
   }
 }

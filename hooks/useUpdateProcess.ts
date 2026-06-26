@@ -1,94 +1,93 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+
+import { toastError, toastSuccess } from "../lib/toast";
 import { supabase } from "../services/supabase";
-import { showError, showToast } from "../lib/toast";
-import { processQueryKey } from "./useProcess";
-import type {
-  ProcessStatus,
-  UserProcessWithOpportunity,
-} from "../types/process";
+import type { UpdateProcessInput, UserProcess } from "../types/process";
+import { processKey } from "./useProcess";
+import { PROCESSES_KEY } from "./useProcesses";
 
-const PROCESSES_QUERY_KEY = ["processes"] as const;
+// Mesmo payload enxuto do detalhe (§8.1) — alimenta o cache de useProcess.
+const SELECT =
+  "id, status, ai_summary, checklist_state, notes, ai_processed_at, created_at, " +
+  "opportunity_id, bidding_opportunities ( id, title, agency, opening_date )";
+const GENERIC_ERROR =
+  "Não foi possível atualizar o processo agora. Tente novamente em instantes.";
 
-export interface UpdateProcessInput {
-  id: string;
-  status?: ProcessStatus;
-  checklist_state?: Record<string, boolean>;
-  notes?: string;
+type Context = {
+  previousProcess?: UserProcess;
+  previousList?: UserProcess[];
+};
+
+/** Aplica o patch a um processo, ignorando o campo `id`. */
+function applyPatch(process: UserProcess, input: UpdateProcessInput): UserProcess {
+  const { id: _id, ...patch } = input;
+  return { ...process, ...patch };
 }
 
-async function updateProcess({ id, ...changes }: UpdateProcessInput) {
-  const { error } = await supabase
-    .from("user_processes")
-    .update(changes)
-    .eq("id", id);
-
-  if (error) {
-    throw new Error("Não foi possível salvar a alteração. Tente novamente.");
-  }
-}
-
-function applyChanges(
-  process: UserProcessWithOpportunity,
-  changes: Omit<UpdateProcessInput, "id">,
-): UserProcessWithOpportunity {
-  return {
-    ...process,
-    ...changes,
-    updated_at: new Date().toISOString(),
-  };
-}
-
-interface MutationContext {
-  previousDetail?: UserProcessWithOpportunity;
-  previousList?: UserProcessWithOpportunity[];
-}
-
+/**
+ * Atualiza status / checklist_state / notes de um processo com optimistic
+ * update e rollback em caso de erro. O Realtime (useProcess/useProcesses)
+ * eventualmente reconcilia, mas o optimistic update dá resposta imediata.
+ */
 export function useUpdateProcess() {
   const queryClient = useQueryClient();
 
-  return useMutation<void, Error, UpdateProcessInput, MutationContext>({
-    mutationFn: updateProcess,
-    onMutate: async ({ id, ...changes }) => {
-      await queryClient.cancelQueries({ queryKey: processQueryKey(id) });
-      await queryClient.cancelQueries({ queryKey: PROCESSES_QUERY_KEY });
+  return useMutation<UserProcess, Error, UpdateProcessInput, Context>({
+    mutationFn: async (input) => {
+      const { id, ...patch } = input;
+      const { data, error } = await supabase
+        .from("user_processes")
+        .update(patch)
+        .eq("id", id)
+        .select(SELECT)
+        .single();
 
-      const previousDetail = queryClient.getQueryData<UserProcessWithOpportunity>(
-        processQueryKey(id),
-      );
-      const previousList = queryClient.getQueryData<UserProcessWithOpportunity[]>(
-        PROCESSES_QUERY_KEY,
-      );
-
-      queryClient.setQueryData<UserProcessWithOpportunity | undefined>(
-        processQueryKey(id),
-        (current) => (current ? applyChanges(current, changes) : current),
-      );
-
-      queryClient.setQueryData<UserProcessWithOpportunity[] | undefined>(
-        PROCESSES_QUERY_KEY,
-        (current) =>
-          current?.map((process) =>
-            process.id === id ? applyChanges(process, changes) : process,
-          ),
-      );
-
-      return { previousDetail, previousList };
+      if (error || !data) throw error ?? new Error(GENERIC_ERROR);
+      return data as unknown as UserProcess;
     },
-    onError: (error, { id }, context) => {
-      if (context?.previousDetail) {
-        queryClient.setQueryData(processQueryKey(id), context.previousDetail);
+
+    onMutate: async (input) => {
+      const key = processKey(input.id);
+      // Evita que fetches em voo sobrescrevam o optimistic update.
+      await queryClient.cancelQueries({ queryKey: key });
+      await queryClient.cancelQueries({ queryKey: PROCESSES_KEY });
+
+      const previousProcess = queryClient.getQueryData<UserProcess>(key);
+      const previousList = queryClient.getQueryData<UserProcess[]>(PROCESSES_KEY);
+
+      if (previousProcess) {
+        queryClient.setQueryData<UserProcess>(key, applyPatch(previousProcess, input));
+      }
+      if (previousList) {
+        queryClient.setQueryData<UserProcess[]>(
+          PROCESSES_KEY,
+          previousList.map((p) => (p.id === input.id ? applyPatch(p, input) : p)),
+        );
+      }
+
+      return { previousProcess, previousList };
+    },
+
+    onError: (error, input, context) => {
+      // Rollback de ambos os caches.
+      if (context?.previousProcess) {
+        queryClient.setQueryData(processKey(input.id), context.previousProcess);
       }
       if (context?.previousList) {
-        queryClient.setQueryData(PROCESSES_QUERY_KEY, context.previousList);
+        queryClient.setQueryData(PROCESSES_KEY, context.previousList);
       }
-      showError(error.message);
+      toastError(error.message || GENERIC_ERROR);
     },
-    onSuccess: () => {
-      showToast("Processo atualizado.");
+
+    onSuccess: (data) => {
+      // Concilia com a linha autoritativa do servidor (inclui updated_at).
+      queryClient.setQueryData(processKey(data.id), data);
+      toastSuccess("Processo atualizado.");
     },
-    onSettled: (_data, _error, { id }) => {
-      queryClient.invalidateQueries({ queryKey: processQueryKey(id) });
-      queryClient.invalidateQueries({ queryKey: PROCESSES_QUERY_KEY });
+
+    onSettled: (_data, _error, input) => {
+      queryClient.invalidateQueries({ queryKey: processKey(input.id) });
+      queryClient.invalidateQueries({ queryKey: PROCESSES_KEY });
     },
   });
 }

@@ -1,5 +1,5 @@
-import { Tabs } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
+import { Tabs } from "expo-router";
 
 export default function AppLayout() {
   return (
@@ -7,9 +7,15 @@ export default function AppLayout() {
       screenOptions={{
         headerShown: false,
         tabBarActiveTintColor: "#2563eb",
-        tabBarInactiveTintColor: "#9ca3af",
+        tabBarInactiveTintColor: "#94a3b8",
+        tabBarStyle: { borderTopColor: "#f1f5f9" },
+        tabBarLabelStyle: { fontSize: 11, fontWeight: "600" },
       }}
     >
+      {/* Rotas sem aba própria. */}
+      <Tabs.Screen name="index" options={{ href: null }} />
+      <Tabs.Screen name="detalhes" options={{ href: null }} />
+
       <Tabs.Screen
         name="buscar"
         options={{
@@ -37,7 +43,6 @@ export default function AppLayout() {
           ),
         }}
       />
-      <Tabs.Screen name="detalhes" options={{ href: null }} />
     </Tabs>
   );
 }
