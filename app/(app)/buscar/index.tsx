@@ -14,6 +14,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { BidCard, BidCardSkeleton } from "../../../components/BidCard";
 import { FilterSheet } from "../../../components/FilterSheet";
 import { Button } from "../../../components/ui/Button";
+import { CATEGORY_LABELS } from "../../../lib/categories";
 import { useOpportunities } from "../../../hooks/useOpportunities";
 import type { OpportunityFilters } from "../../../types/opportunity";
 
@@ -161,6 +162,9 @@ export default function Buscar() {
                 {submittedKeyword
                   ? `Resultados para "${submittedKeyword}"`
                   : "Licitações recentes"}
+                {filters.categoria
+                  ? ` · ${CATEGORY_LABELS[filters.categoria]}`
+                  : ""}
               </Text>
             ) : null
           }

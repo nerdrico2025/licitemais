@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Ionicons } from "@expo/vector-icons";
 import { Modal, Pressable, ScrollView, Text, View } from "react-native";
 
+import { CATEGORIES } from "../lib/categories";
 import type { OpportunityFilters } from "../types/opportunity";
 import { Button } from "./ui/Button";
 import { Chip } from "./ui/Chip";
@@ -13,15 +14,18 @@ const UFS = [
   "SP", "SE", "TO",
 ];
 
-// Categorias de licitação = codigoModalidadeContratacao do PNCP (Lei 14.133).
-// Ids confirmados contra a resposta real de /api/search. Modalidades extintas
-// pela 14.133 (Tomada de Preços, Convite) não têm código e ficam de fora.
-const CATEGORIAS: { id: number; nome: string }[] = [
+// Modalidade = codigoModalidadeContratacao do PNCP (Lei 14.133). Ids
+// confirmados contra /api/search (param `modalidades`).
+const MODALIDADES: { id: number; nome: string }[] = [
   { id: 6, nome: "Pregão Eletrônico" },
-  { id: 4, nome: "Concorrência" },
+  { id: 7, nome: "Pregão Presencial" },
+  { id: 4, nome: "Concorrência Eletrônica" },
+  { id: 5, nome: "Concorrência Presencial" },
   { id: 8, nome: "Dispensa" },
   { id: 9, nome: "Inexigibilidade" },
-  { id: 1, nome: "Leilão" },
+  { id: 12, nome: "Credenciamento" },
+  { id: 3, nome: "Concurso" },
+  { id: 1, nome: "Leilão Eletrônico" },
   { id: 2, nome: "Diálogo Competitivo" },
 ];
 
@@ -91,18 +95,37 @@ export function FilterSheet({ visible, value, onClose, onApply }: Props) {
             </ScrollView>
           </View>
 
-          {/* Categoria (modalidade de contratação) */}
+          {/* Categoria (tema inferido por IA — refina os resultados) */}
           <View className="gap-2">
             <Text className="text-sm font-semibold text-slate-700">Categoria</Text>
             <View className="flex-row flex-wrap gap-2">
-              {CATEGORIAS.map((c) => (
+              {CATEGORIES.map((c) => (
                 <Chip
                   key={c.id}
-                  label={c.nome}
-                  selected={draft.modalidade === c.id}
+                  label={c.label}
+                  selected={draft.categoria === c.id}
                   onPress={() =>
                     patch({
-                      modalidade: draft.modalidade === c.id ? undefined : c.id,
+                      categoria: draft.categoria === c.id ? undefined : c.id,
+                    })
+                  }
+                />
+              ))}
+            </View>
+          </View>
+
+          {/* Modalidade (modalidade de contratação do PNCP) */}
+          <View className="gap-2">
+            <Text className="text-sm font-semibold text-slate-700">Modalidade</Text>
+            <View className="flex-row flex-wrap gap-2">
+              {MODALIDADES.map((m) => (
+                <Chip
+                  key={m.id}
+                  label={m.nome}
+                  selected={draft.modalidade === m.id}
+                  onPress={() =>
+                    patch({
+                      modalidade: draft.modalidade === m.id ? undefined : m.id,
                     })
                   }
                 />

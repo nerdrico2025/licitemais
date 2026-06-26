@@ -2,6 +2,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { Pressable, Text, View } from "react-native";
 
+import { CATEGORY_LABELS } from "../lib/categories";
 import { formatCurrency, formatDate } from "../lib/format";
 import type { BiddingOpportunity } from "../types/opportunity";
 
@@ -9,6 +10,15 @@ function ModalityBadge({ label }: { label: string }) {
   return (
     <View className="self-start rounded-full bg-blue-50 px-2.5 py-1">
       <Text className="text-xs font-semibold text-blue-700">{label}</Text>
+    </View>
+  );
+}
+
+/** Tema inferido por IA (classify-opportunities). Cor distinta da modalidade. */
+function CategoryBadge({ label }: { label: string }) {
+  return (
+    <View className="self-start rounded-full bg-emerald-50 px-2.5 py-1">
+      <Text className="text-xs font-semibold text-emerald-700">{label}</Text>
     </View>
   );
 }
@@ -29,11 +39,14 @@ export function BidCard({ opportunity }: { opportunity: BiddingOpportunity }) {
       className="gap-3 rounded-2xl border border-slate-200 bg-white p-4"
     >
       <View className="flex-row items-center justify-between gap-2">
-        {opportunity.bidding_mode ? (
-          <ModalityBadge label={opportunity.bidding_mode} />
-        ) : (
-          <View />
-        )}
+        <View className="flex-1 flex-row flex-wrap items-center gap-1.5">
+          {opportunity.bidding_mode ? (
+            <ModalityBadge label={opportunity.bidding_mode} />
+          ) : null}
+          {opportunity.category ? (
+            <CategoryBadge label={CATEGORY_LABELS[opportunity.category]} />
+          ) : null}
+        </View>
         {opportunity.uf ? (
           <Text className="text-xs font-bold text-slate-400">{opportunity.uf}</Text>
         ) : null}

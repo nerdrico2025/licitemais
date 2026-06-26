@@ -31,9 +31,11 @@ export function useCreateProcess() {
       if (!user) throw new Error("Sessão expirada. Faça login novamente.");
 
       // 1. upsert da oportunidade (colunas espelham BiddingOpportunity 1:1).
+      // `category` é inferida por IA no client e não tem coluna na tabela.
+      const { category: _category, ...oppRow } = opportunity;
       const { data: opp, error: oppError } = await supabase
         .from("bidding_opportunities")
-        .upsert(opportunity, { onConflict: "external_id" })
+        .upsert(oppRow, { onConflict: "external_id" })
         .select("id")
         .single();
       if (oppError || !opp) throw oppError ?? new Error(GENERIC_ERROR);
