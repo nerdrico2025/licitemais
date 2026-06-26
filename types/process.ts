@@ -1,3 +1,4 @@
+import type { Tables } from "./database";
 import type { BiddingOpportunity } from "./opportunity";
 
 /** Estados possíveis de um processo (espelha o CHECK de user_processes.status). */
@@ -40,18 +41,18 @@ export type ChecklistState = Record<string, boolean>;
 /** Oportunidade como volta no join (inclui o id da tabela). */
 export type ProcessOpportunity = BiddingOpportunity & { id: string };
 
-/** Linha de user_processes com a bidding_opportunity relacionada (join). */
-export type UserProcess = {
-  id: string;
-  user_id: string;
-  opportunity_id: string;
+/**
+ * Linha de user_processes com a bidding_opportunity relacionada (join).
+ * Deriva do schema gerado (types/database.ts), tipando as colunas jsonb
+ * (status/ai_summary/checklist_state) de forma rica e adicionando o join.
+ */
+export type UserProcess = Omit<
+  Tables<"user_processes">,
+  "status" | "ai_summary" | "checklist_state"
+> & {
   status: ProcessStatus;
   ai_summary: AiSummary | null;
-  ai_processed_at: string | null;
   checklist_state: ChecklistState;
-  notes: string | null;
-  created_at: string;
-  updated_at: string;
   bidding_opportunities: ProcessOpportunity | null;
 };
 
