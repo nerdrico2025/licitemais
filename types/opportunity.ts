@@ -36,6 +36,12 @@ export type BiddingOpportunity = {
   uf: string | null;
   source_url: string | null;
   raw_text: string | null;
+  /**
+   * numeroControlePNCP do item (ex.: "CNPJ-1-seq/ano"). Preservado para
+   * permitir enriquecimento sob demanda pelo endpoint de detalhe. null para
+   * fontes sem esse identificador (ex.: Compras.gov).
+   */
+  pncp_control_number: string | null;
   /** Tema inferido por IA; undefined = ainda não classificado. */
   category?: OpportunityCategory | null;
   /** ISO 8601 — quando o app buscou o registro. */

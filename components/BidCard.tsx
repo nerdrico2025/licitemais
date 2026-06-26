@@ -76,7 +76,11 @@ export function BidCard({ opportunity }: { opportunity: BiddingOpportunity }) {
           <Text className="text-sm font-bold text-slate-900">
             {formatCurrency(opportunity.estimated_value)}
           </Text>
-        ) : null}
+        ) : (
+          // O valor pode existir, só não veio nesta chamada (ex.: /api/search).
+          // É consultado sob demanda na tela de detalhes — não na lista (3G).
+          <Text className="text-sm font-medium text-slate-400">A consultar</Text>
+        )}
       </View>
     </Pressable>
   );

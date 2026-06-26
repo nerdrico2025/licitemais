@@ -13,6 +13,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 
 import { useCachedOpportunity } from "../../../hooks/useCachedOpportunity";
 import { useCreateProcess } from "../../../hooks/useCreateProcess";
+import { useOpportunityDetail } from "../../../hooks/useOpportunityDetail";
 import { formatCurrency, formatDateTime } from "../../../lib/format";
 import { toastError, toastSuccess } from "../../../lib/toast";
 import type { BiddingOpportunity } from "../../../types/opportunity";
@@ -93,6 +94,8 @@ export default function Detalhes() {
   const externalId = decodeId(params.external_id);
   const opportunity = useCachedOpportunity(externalId);
   const monitor = useCreateProcess();
+  // Enriquecimento efêmero do valor/prazo quando não vieram na listagem.
+  const enrich = useOpportunityDetail(opportunity);
 
   if (!opportunity) {
     return (
@@ -115,6 +118,20 @@ export default function Detalhes() {
       </SafeAreaView>
     );
   }
+
+  // Valor: o da listagem tem prioridade; senão, o enriquecido sob demanda.
+  // "Consultando..." durante a busca; "Não informado" quando o detalhe responde
+  // sem valor; "A consultar" quando ainda não deu (erro/timeout ou sem id).
+  const resolvedValue = opportunity.estimated_value ?? enrich.estimatedValue;
+  const valueText =
+    resolvedValue != null
+      ? formatCurrency(resolvedValue)
+      : enrich.status === "loading"
+        ? "Consultando..."
+        : enrich.status === "done"
+          ? "Não informado"
+          : "A consultar";
+  const deadlineIso = opportunity.proposal_deadline ?? enrich.proposalDeadline;
 
   return (
     <SafeAreaView className="flex-1 bg-white">
@@ -155,8 +172,12 @@ export default function Detalhes() {
           <Text className="text-xs font-semibold uppercase tracking-wide text-slate-400">
             Valor estimado
           </Text>
-          <Text className="text-2xl font-bold text-slate-900">
-            {formatCurrency(opportunity.estimated_value)}
+          <Text
+            className={`text-2xl font-bold ${
+              resolvedValue != null ? "text-slate-900" : "text-slate-400"
+            }`}
+          >
+            {valueText}
           </Text>
         </View>
 
@@ -180,7 +201,7 @@ export default function Detalhes() {
           <DetailRow
             icon="time-outline"
             label="Encerramento das propostas"
-            value={formatDateTime(opportunity.proposal_deadline)}
+            value={formatDateTime(deadlineIso)}
           />
           <DetailRow
             icon="layers-outline"

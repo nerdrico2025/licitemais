@@ -1,3 +1,4 @@
+import { parsePncpControlId } from "../lib/pncpId";
 import type {
   BiddingOpportunity,
   SearchParams,
@@ -17,6 +18,8 @@ const MIN_LIMIT = 10; // mínimo aceito pela API
 const TIMEOUT_MS = 10_000;
 const RETRIES = 2;
 const WINDOW_DAYS = 30;
+// Enriquecimento de detalhe: timeout curto e sem retry (é opcional).
+const DETAIL_TIMEOUT_MS = 8_000;
 
 // Marcas diacríticas combinantes (para busca sem acento). RegExp por string
 // ASCII para manter o código-fonte sem caracteres especiais.
@@ -102,7 +105,6 @@ function mapPncpItem(raw: any): BiddingOpportunity {
   const complemento: string = (raw?.informacaoComplementar ?? "").trim();
   const unidade: string = (raw?.unidadeOrgao?.nomeUnidade ?? "").trim();
   const processo: string = (raw?.processo ?? "").trim();
-  const valor = raw?.valorTotalEstimado;
   return {
     external_id: String(raw?.numeroControlePNCP ?? ""),
     source: "PNCP",
@@ -113,13 +115,17 @@ function mapPncpItem(raw: any): BiddingOpportunity {
     opening_date: toISO(raw?.dataAberturaProposta),
     proposal_deadline: toISO(raw?.dataEncerramentoProposta),
     bidding_mode: raw?.modalidadeNome ?? null,
-    estimated_value: Number.isFinite(valor) ? valor : null,
+    // valorTotalEstimado vem como número; 0 no PNCP costuma significar
+    // "não informado/sigiloso" -> null. Number(...)||null também cobre o caso
+    // (raro) de vir como string.
+    estimated_value: Number(raw?.valorTotalEstimado) || null,
     uf: raw?.unidadeOrgao?.ufSigla ?? null,
     source_url: raw?.linkSistemaOrigem ?? raw?.linkProcessoEletronico ?? null,
     raw_text:
       [objeto, complemento, processo && `Processo: ${processo}`, unidade]
         .filter(Boolean)
         .join("\n") || null,
+    pncp_control_number: raw?.numeroControlePNCP ?? null,
     fetched_at: new Date().toISOString(),
   };
 }
@@ -132,7 +138,6 @@ function mapSearchItem(raw: any): BiddingOpportunity {
   const objeto: string = (raw?.description ?? "").trim();
   const orgao: string = (raw?.orgao_nome ?? "").trim();
   const unidade: string = (raw?.unidade_nome ?? "").trim();
-  const valor = raw?.valor_global;
   const itemUrl: string | null = raw?.item_url ?? null;
   return {
     external_id: String(raw?.numero_controle_pncp ?? raw?.id ?? ""),
@@ -144,12 +149,48 @@ function mapSearchItem(raw: any): BiddingOpportunity {
     opening_date: toISO(raw?.data_inicio_vigencia ?? raw?.data_publicacao_pncp),
     proposal_deadline: toISO(raw?.data_fim_vigencia),
     bidding_mode: raw?.modalidade_licitacao_nome ?? null,
-    estimated_value: Number.isFinite(valor) ? valor : null,
+    // ATENÇÃO: o índice /api/search NÃO carrega o valor estimado — valor_global
+    // vem sempre null. A coerção fica robusta, mas resultados de busca por
+    // termo/categoria só terão valor via enriquecimento pelo detalhe (TODO).
+    estimated_value: Number(raw?.valor_global) || null,
     uf: raw?.uf ?? null,
     source_url: itemUrl ? `${PNCP_ORIGIN}${itemUrl}` : null,
     raw_text:
       [objeto, orgao, unidade].filter(Boolean).join("\n") || null,
+    // Preservado p/ enriquecimento sob demanda na tela de detalhes (o índice
+    // /api/search não traz o valor estimado).
+    pncp_control_number: raw?.numero_controle_pncp ?? null,
     fetched_at: new Date().toISOString(),
+  };
+}
+
+/**
+ * Enriquecimento sob demanda do detalhe de uma contratação do PNCP — usado SÓ
+ * na tela de detalhes (1 fetch). NUNCA chamar na lista: seria 1 fetch por card
+ * visível e quebraria o 3G.
+ *
+ * Atenção ao endpoint: /v1/contratacoes/{numeroControlePNCP}/publicacao retorna
+ * HTTP 400 (não aceita o numeroControlePNCP). O detalhe é indexado por
+ * cnpj/ano/sequencial, então parseamos o numeroControlePNCP (parsePncpControlId)
+ * e consultamos /v1/orgaos/{cnpj}/compras/{ano}/{sequencial} (confirmado 200).
+ *
+ * Resolve com os campos do detalhe (estimatedValue/proposalDeadline) em caso de
+ * 200; relança em timeout/erro de rede/HTTP — o chamador (hook) trata em
+ * silêncio. Sem retry; timeout de 8s.
+ */
+export async function fetchOpportunityDetail(
+  numeroControlePNCP: string,
+): Promise<{ estimatedValue: number | null; proposalDeadline: string | null }> {
+  const id = parsePncpControlId(numeroControlePNCP);
+  // Sem id parseável (ex.: Compras.gov) não há detalhe a consultar.
+  if (!id) return { estimatedValue: null, proposalDeadline: null };
+
+  const url =
+    `${PNCP_BASE}/v1/orgaos/${id.cnpj}/compras/${id.ano}/${id.sequencial}`;
+  const json = await fetchJson(url, DETAIL_TIMEOUT_MS);
+  return {
+    estimatedValue: Number(json?.valorTotalEstimado) || null,
+    proposalDeadline: toISO(json?.dataEncerramentoProposta),
   };
 }
 
