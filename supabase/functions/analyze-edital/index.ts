@@ -19,7 +19,12 @@ import { z } from "https://esm.sh/zod@3.24.1";
 // ---------------------------------------------------------------------------
 
 const MAX_TEXT_CHARS = 40_000;
+// Abaixo disso a extração é considerada insuficiente (ex.: PDF escaneado,
+// página de erro HTML) e tentamos o raw_text em cache.
+const MIN_USEFUL_CHARS = 100;
 const DOWNLOAD_TIMEOUT_MS = 30_000;
+// Limite de tamanho do download para proteger a memória da função.
+const MAX_DOWNLOAD_BYTES = 15 * 1024 * 1024; // 15 MB
 const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
 const APP_TITLE = "Licite Mais";
 const APP_REFERER = "https://licitemais.app";
@@ -112,9 +117,17 @@ async function downloadSource(
     if (!res.ok) {
       throw new Error(`Download failed: ${res.status} ${res.statusText}`);
     }
+    // Rejeita arquivos grandes demais antes de carregar tudo na memória.
+    const declared = Number(res.headers.get("content-length") ?? 0);
+    if (declared > MAX_DOWNLOAD_BYTES) {
+      throw new Error(`File too large: ${declared} bytes`);
+    }
     const contentType = res.headers.get("content-type") ?? "";
-    const bytes = new Uint8Array(await res.arrayBuffer());
-    return { bytes, contentType };
+    const buffer = await res.arrayBuffer();
+    if (buffer.byteLength > MAX_DOWNLOAD_BYTES) {
+      throw new Error(`File too large: ${buffer.byteLength} bytes`);
+    }
+    return { bytes: new Uint8Array(buffer), contentType };
   } finally {
     clearTimeout(timer);
   }
@@ -179,7 +192,7 @@ async function callLLM(
     body: JSON.stringify({
       model,
       temperature: 0,
-      max_tokens: 1500,
+      max_tokens: 2048,
       response_format: { type: "json_object" },
       messages: [
         { role: "system", content: system },
@@ -214,7 +227,18 @@ async function summarizeWithModel(
 ): Promise<AiSummary> {
   const content = await callLLM(model, SYSTEM_PROMPT, editalText);
   const parsed = parseLooseJson(content);
-  return AiSummarySchema.parse(parsed);
+  const summary = AiSummarySchema.parse(parsed);
+
+  // Garante ids uuid únicos no checklist: os modelos costumam devolver ids
+  // duplicados ou em formato não-uuid, e o app os usa como chave em
+  // checklist_state (colisões quebram o estado dos checkboxes).
+  return {
+    ...summary,
+    documentsChecklist: summary.documentsChecklist.map((doc) => ({
+      ...doc,
+      id: crypto.randomUUID(),
+    })),
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -270,17 +294,28 @@ Deno.serve(async (req: Request) => {
       : process.bidding_opportunities;
     const sourceUrl: string | null = opportunity?.source_url ?? null;
 
-    // 4. Baixa e extrai o texto do edital (fallback para raw_text em cache).
+    // 4. Baixa e extrai o texto do edital. Falhas de download/extração (PDF
+    // corrompido, URL inválida, timeout) não abortam: caem no fallback abaixo.
     let editalText = "";
     if (sourceUrl) {
-      const { bytes, contentType } = await downloadSource(sourceUrl);
-      editalText = await extractEditalText(bytes, contentType, sourceUrl);
+      try {
+        const { bytes, contentType } = await downloadSource(sourceUrl);
+        editalText = await extractEditalText(bytes, contentType, sourceUrl);
+      } catch (e) {
+        console.warn(
+          `Download/extração falhou (${sourceUrl}):`,
+          e instanceof Error ? e.message : e,
+        );
+      }
     }
-    if (!editalText && opportunity?.raw_text) {
-      editalText = String(opportunity.raw_text).slice(0, MAX_TEXT_CHARS);
+    // Extração curta/vazia (ex.: PDF escaneado, página de erro HTML) -> usa o
+    // raw_text em cache quando ele tiver mais conteúdo útil.
+    if (editalText.trim().length < MIN_USEFUL_CHARS && opportunity?.raw_text) {
+      const cached = String(opportunity.raw_text).slice(0, MAX_TEXT_CHARS);
+      if (cached.trim().length > editalText.trim().length) editalText = cached;
     }
-    if (!editalText) {
-      throw new Error("No edital text available (missing source_url/raw_text)");
+    if (!editalText.trim()) {
+      throw new Error("No edital text available (source_url ilegível e sem raw_text).");
     }
 
     // 5 + 6. Chama o modelo principal; em falha de parse/validação ou 429,
