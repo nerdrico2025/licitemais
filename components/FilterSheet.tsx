@@ -13,16 +13,15 @@ const UFS = [
   "SP", "SE", "TO",
 ];
 
-const MODALIDADES: { id: number; nome: string }[] = [
+// Categorias de licitação = codigoModalidadeContratacao do PNCP (Lei 14.133).
+// Ids confirmados contra a resposta real de /api/search. Modalidades extintas
+// pela 14.133 (Tomada de Preços, Convite) não têm código e ficam de fora.
+const CATEGORIAS: { id: number; nome: string }[] = [
   { id: 6, nome: "Pregão Eletrônico" },
-  { id: 7, nome: "Pregão Presencial" },
-  { id: 4, nome: "Concorrência Eletrônica" },
-  { id: 5, nome: "Concorrência Presencial" },
+  { id: 4, nome: "Concorrência" },
   { id: 8, nome: "Dispensa" },
   { id: 9, nome: "Inexigibilidade" },
-  { id: 12, nome: "Credenciamento" },
-  { id: 3, nome: "Concurso" },
-  { id: 1, nome: "Leilão Eletrônico" },
+  { id: 1, nome: "Leilão" },
   { id: 2, nome: "Diálogo Competitivo" },
 ];
 
@@ -92,18 +91,18 @@ export function FilterSheet({ visible, value, onClose, onApply }: Props) {
             </ScrollView>
           </View>
 
-          {/* Modalidade */}
+          {/* Categoria (modalidade de contratação) */}
           <View className="gap-2">
-            <Text className="text-sm font-semibold text-slate-700">Modalidade</Text>
+            <Text className="text-sm font-semibold text-slate-700">Categoria</Text>
             <View className="flex-row flex-wrap gap-2">
-              {MODALIDADES.map((m) => (
+              {CATEGORIAS.map((c) => (
                 <Chip
-                  key={m.id}
-                  label={m.nome}
-                  selected={draft.modalidade === m.id}
+                  key={c.id}
+                  label={c.nome}
+                  selected={draft.modalidade === c.id}
                   onPress={() =>
                     patch({
-                      modalidade: draft.modalidade === m.id ? undefined : m.id,
+                      modalidade: draft.modalidade === c.id ? undefined : c.id,
                     })
                   }
                 />

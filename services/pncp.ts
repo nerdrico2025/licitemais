@@ -173,6 +173,11 @@ async function searchByKeyword(
     tam_pagina: String(limit),
   });
   if (params.uf) query.set("ufs", params.uf);
+  // Filtro de categoria/modalidade no /api/search é `modalidades` (confirmado
+  // contra a API; outros nomes como `modalidade_licitacao_id` são ignorados).
+  if (params.modalidade != null) {
+    query.set("modalidades", String(params.modalidade));
+  }
 
   const url = `${PNCP_SEARCH}/?${query.toString()}`;
   const json = await withRetry(() => fetchJson(url), RETRIES);
