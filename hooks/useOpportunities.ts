@@ -18,18 +18,34 @@ async function fetchOpportunitiesPage(
   params: UseOpportunitiesParams,
   page: number,
 ): Promise<SearchResult> {
-  const { categoria } = params;
+  const { categoria, relevanceFilter } = params;
   const limit = categoria ? CATEGORY_PAGE_SIZE : PAGE_SIZE;
-  const result = await searchOpportunities({ ...params, page, limit });
+  const result = await searchOpportunities({
+    ...params,
+    page,
+    limit,
+    // Pontua a relevância pela keyword da busca atual (se houver).
+    relevanceKeywords: params.keyword?.trim() ? [params.keyword.trim()] : undefined,
+  });
 
-  if (!categoria) return result;
+  let data = result.data;
 
-  // Classifica a página (LLM) e mantém só o tema escolhido. `total` segue da
-  // fonte (aproximado): a classificação é best-effort sobre o que foi carregado.
-  const categories = await classifyOpportunities(result.data);
-  const data = result.data
-    .map((item) => ({ ...item, category: categories.get(item.external_id) ?? null }))
-    .filter((item) => item.category === categoria);
+  // Filtro de categoria: classifica a página (LLM) e mantém só o tema escolhido.
+  if (categoria) {
+    const categories = await classifyOpportunities(data);
+    data = data
+      .map((item) => ({ ...item, category: categories.get(item.external_id) ?? null }))
+      .filter((item) => item.category === categoria);
+  }
+
+  // Filtro de relevância (client-side). LIMITAÇÃO: opera SOBRE a página já
+  // paginada — não substitui a paginação. Em buscas muito específicas, o
+  // usuário pode ver menos resultados por página do que o esperado; o infinite
+  // scroll continua puxando as próximas páginas normalmente.
+  if (relevanceFilter && relevanceFilter !== "all") {
+    const min = relevanceFilter === "high" ? 60 : 30;
+    data = data.filter((item) => (item.relevanceScore ?? 0) >= min);
+  }
 
   return { ...result, data };
 }

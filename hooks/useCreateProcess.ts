@@ -31,10 +31,14 @@ export function useCreateProcess() {
       if (!user) throw new Error("Sessão expirada. Faça login novamente.");
 
       // 1. upsert da oportunidade (colunas espelham BiddingOpportunity 1:1).
-      // `category` (IA) e `pncp_control_number` (enriquecimento) são campos
-      // client-only sem coluna na tabela.
-      const { category: _category, pncp_control_number: _pncp, ...oppRow } =
-        opportunity;
+      // `category` (IA), `pncp_control_number` (enriquecimento) e
+      // `relevanceScore` (scoring) são campos client-only sem coluna na tabela.
+      const {
+        category: _category,
+        pncp_control_number: _pncp,
+        relevanceScore: _score,
+        ...oppRow
+      } = opportunity;
       const { data: opp, error: oppError } = await supabase
         .from("bidding_opportunities")
         .upsert(oppRow, { onConflict: "external_id" })
