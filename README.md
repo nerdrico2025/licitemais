@@ -73,5 +73,41 @@ supabase status    # mostra URLs e chaves locais
 supabase stop
 ```
 
-> O schema e as Edge Functions ainda não foram criados — apenas a estrutura
-> inicial do projeto (`supabase init`).
+### Edge Functions
+
+- **`analyze-edital`** — analisa o edital de uma licitação com IA (OpenRouter).
+- **`ping`** — keep-alive: faz um `SELECT` trivial no banco e retorna `200`.
+
+Deploy:
+
+```bash
+supabase functions deploy analyze-edital
+supabase functions deploy ping
+```
+
+> A `ping` roda com `verify_jwt = false` (ver `supabase/config.toml`) para ser
+> acessível sem cabeçalho de `Authorization`.
+
+## Keep-alive (evitar pausa por inatividade)
+
+Projetos no plano free do Supabase são **pausados após ~7 dias sem atividade**.
+O workflow [`.github/workflows/keepalive.yml`](.github/workflows/keepalive.yml)
+roda a cada 3 dias (e pode ser disparado manualmente em **Actions →
+Keepalive → Run workflow**) e faz um `curl` na Edge Function `ping`, gerando
+atividade real no banco.
+
+Para funcionar, configure **um secret no repositório do GitHub**:
+
+1. No GitHub, vá em **Settings → Secrets and variables → Actions → New
+   repository secret**.
+2. Crie o secret:
+
+   | Name           | Value                                  |
+   | -------------- | -------------------------------------- |
+   | `SUPABASE_URL` | `https://seu-projeto.supabase.co`      |
+
+   (a URL do projeto, **sem** barra no final — a mesma de
+   `EXPO_PUBLIC_SUPABASE_URL`).
+
+O job chama `"$SUPABASE_URL/functions/v1/ping"` com `curl --fail`, então a
+execução falha caso a função esteja fora do ar — útil como monitor simples.
